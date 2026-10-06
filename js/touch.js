@@ -1,18 +1,34 @@
 /**
- * touch.js — Stage D unified touch input layer.
+ * touch.js — unified mobile control layer.
  *
- * Virtual joysticks + tactical action buttons that write into the SAME
- * game.input command object as keyboard/mouse (spec §38: one gameplay
- * command path, no duplicated logic). Also provides: contextual interact,
- * weapon-pickup card, hold-Q-style equipment wheel via touch, haptics,
- * subtle aim assist, and settings-driven size/opacity/sensitivity.
+ * Writes into the SAME `game.input` command object the keyboard/mouse use, so
+ * gameplay code is identical on every device (one command path, no duplicated
+ * logic).
+ *
+ * Design rules:
+ *  - TWO analog joysticks: left = movement, right = camera/look.
+ *  - Ownership is tracked by POINTER ID and enforced with setPointerCapture, so
+ *    a second finger can never steal a joystick that another finger owns, and
+ *    `lostpointercapture` guarantees cleanup if the OS takes the pointer away.
+ *  - Buttons track their owning pointerId too: a held button cannot be
+ *    double-triggered, and releasing outside still fires exactly one release.
+ *  - Everything is multi-touch by construction: move + look + fire + ADS can all
+ *    be active simultaneously because each control owns a distinct pointer.
+ *  - `touch-action: none` + preventDefault stops scroll/zoom/pinch during play.
+ *  - Haptics always fail safe (feature-detected and wrapped).
  */
 import { WEAPON_DEFS } from './weapons.js';
 
 const VIBE = {
   shot: 10, hit: 22, damage: 45, objective: 30, collision: 26,
-  pickup: 20, complete: [55, 70, 55],
+  pickup: 20, complete: [55, 70, 55], ui: 8,
 };
+
+// Look stick: peak turn rate in "mouse-pixel equivalents" per second at full
+// deflection. ~850 * 0.0022 rad/unit ≈ 107°/s — controllable, not twitchy.
+const LOOK_RATE = 850;
+const DEAD_ZONE = 0.14;
+const RESPONSE_CURVE = 1.35;   // >1 = finer control near the centre
 
 export class TouchControls {
   constructor(game) {
@@ -20,30 +36,44 @@ export class TouchControls {
     this.enabled = false;
     this.layer = document.getElementById('touch-controls');
 
-    // touch state
-    this.moveId = null; this.lookId = null;
+    // joystick pointer ownership
+    this.moveId = null;
+    this.lookId = null;
     this.moveOrigin = { x: 0, y: 0 };
-    this.lookLast = { x: 0, y: 0 };
-    this._joyMag = 0;
-    this._sprintWrote = false;
+    this.lookOrigin = { x: 0, y: 0 };
+    this.moveVec = { x: 0, y: 0 };       // normalised analog, -1..1
+    this.lookVec = { x: 0, y: 0 };
+
+    // button/action state owned by touch
+    this._fireTouch = false;
     this._aimTouch = false;
+    this._sprintBtn = false;
+    this._sprintWrote = false;
     this._wheelTouch = false;
     this._interactTouch = false;
     this._brakeTouch = false;
-    this._fireTouch = false;
+    this._jumpHoldT = 0;
+    this._autoFire = false;
 
-    // haptics throttle + state deltas to react to
+    // haptics + deltas
     this._vibeCd = 0;
-    this._lastShots = 0; this._lastHealth = 100; this._lastHpVeh = 0;
-    this._lastStage = ''; this._lastSpeed = 0; this._lastState = '';
+    this._lastShots = 0;
+    this._lastHealth = 100;
+    this._lastHpVeh = 0;
+    this._lastStage = '';
+    this._lastSpeed = 0;
+    this._lastState = '';
     this._assistTarget = null;
+    this._layerShown = null;
+    this._orientation = null;
 
     this._buildDom();
     this._bindLayer();
+    this._bindButtons();
   }
 
   // =========================================================================
-  // DOM construction
+  // DOM
   // =========================================================================
   _el(cls, text, parent) {
     const d = document.createElement('div');
@@ -56,39 +86,42 @@ export class TouchControls {
   _buildDom() {
     this.layer.innerHTML = '';
 
-    // movement joystick (left zone; base+knob appear where you touch)
-    this.moveZone = this._el('tjoy-zone left');
-    this._stop(this.moveZone);
-    // camera/look surface (right zone; buttons sit above it in DOM order)
-    this.lookZone = this._el('tjoy-zone right');
-    this._stop(this.lookZone);
-    this.joyBase = this._el('tjoy-base');
-    this.joyKnob = this._el('tjoy-knob');
-    this.layer.appendChild(this.joyBase);
-    this.layer.appendChild(this.joyKnob);
+    // --- joysticks -------------------------------------------------------
+    this.moveZone = this._el('tstick-zone left');
+    this.lookZone = this._el('tstick-zone right');
 
-    // action buttons — right cluster: FIRE / AIM-USE / RELOAD / JUMP / CROUCH / CAM
-    // left cluster: SPRINT / WHEEL / MAP, top-left: PAUSE
+    this.moveBase = this._el('tstick-base left');
+    this.moveKnob = this._el('tstick-knob left');
+    this.lookBase = this._el('tstick-base right');
+    this.lookKnob = this._el('tstick-knob right');
+
+    // --- action buttons --------------------------------------------------
+    // Right thumb cluster: FIRE / ADS / RELOAD / JUMP / CROUCH / SWITCH
+    // Left thumb cluster:  SPRINT / GEAR / MAP / CAM (vehicle)
+    // Utility row:         INTERACT (contextual) / PAUSE
     const mk = (cls, label) => {
       const b = document.createElement('div');
       b.className = 'tbtn ' + cls;
+      b.dataset.key = cls.replace('tbtn-', '');
       b.textContent = label;
       this.layer.appendChild(b);
       return b;
     };
-    this.btnFire = mk('tbtn-fire', 'FIRE');
-    this.btnAim = mk('tbtn-aim', 'AIM');
-    this.btnReload = mk('tbtn-reload', 'RLD');
-    this.btnJump = mk('tbtn-jump', 'JUMP');
-    this.btnCrouch = mk('tbtn-crouch', 'CRCH');
-    this.btnCam = mk('tbtn-cam hidden', 'CAM');
-    this.btnSprint = mk('tbtn-sprint', 'SPRT');
-    this.btnWheel = mk('tbtn-wheel', 'GEAR');
-    this.btnMap = mk('tbtn-map', 'MAP');
-    this.btnPause = mk('tbtn-pause', '❚❚');
-    this.btnInteract = mk('tbtn-interact hidden', 'INTERACT');
 
-    // weapon pickup card (spec §20)
+    this.btnFire    = mk('tbtn-fire', 'FIRE');
+    this.btnAds     = mk('tbtn-ads', 'ADS');
+    this.btnReload  = mk('tbtn-reload', 'RELOAD');
+    this.btnJump    = mk('tbtn-jump', 'JUMP');
+    this.btnCrouch  = mk('tbtn-crouch', 'CROUCH');
+    this.btnSwitch  = mk('tbtn-switch', 'SWITCH');
+    this.btnSprint  = mk('tbtn-sprint', 'SPRINT');
+    this.btnGear    = mk('tbtn-gear', 'GEAR');
+    this.btnMap     = mk('tbtn-map', 'MAP');
+    this.btnCam     = mk('tbtn-cam hidden', 'CAM');
+    this.btnInteract= mk('tbtn-interact hidden', 'INTERACT');
+    this.btnPause   = mk('tbtn-pause', '❚❚');
+
+    // weapon pickup card
     this.pickCard = document.createElement('div');
     this.pickCard.id = 'tpick-card';
     this.pickCard.classList.add('hidden');
@@ -100,53 +133,131 @@ export class TouchControls {
     this.layer.appendChild(this.pickCard);
     this._stop(this.pickCard);
     this.pickBtn = this.pickCard.querySelector('#tpick-take');
-
-    this._bindButtons();
   }
 
-  // =========================================================================
-  // Touch plumbing — multitouch by identifier
-  // =========================================================================
-  _on(el, fn) {
-    for (const t of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
-      el.addEventListener(t, (e) => { if (e.cancelable) e.preventDefault(); fn(e, t); }, { passive: false });
+  /** Swallow pointer traffic so a control never starts a background drag. */
+  _stop(el) {
+    for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel']) {
+      el.addEventListener(t, (e) => e.stopPropagation(), { passive: false });
     }
   }
 
+  // =========================================================================
+  // Joysticks — pointer-id ownership + capture
+  // =========================================================================
   _bindLayer() {
-    // movement zone (left) + look zone (right); buttons stopPropagation so
-    // they never start a drag
-    this._on(this.moveZone, (e, type) => this._moveTouch(e, type));
-    this._on(this.lookZone, (e, type) => this._layerTouch(e, type));
+    this._bindStick(this.moveZone, 'moveId', this.moveOrigin, this.moveVec,
+                    this.moveBase, this.moveKnob, false);
+    this._bindStick(this.lookZone, 'lookId', this.lookOrigin, this.lookVec,
+                    this.lookBase, this.lookKnob, true);
   }
 
-  _stop(el) {
-    el.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: false });
-    el.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: false });
-    el.addEventListener('touchend', (e) => e.stopPropagation(), { passive: false });
-    el.addEventListener('touchcancel', (e) => e.stopPropagation(), { passive: false });
-  }
+  _bindStick(zone, idKey, origin, vecOut, baseEl, knobEl, isLook) {
+    const g = () => this.game;
 
-  _btn(el, onStart, onEnd) {
-    this._stop(el);
-    el.addEventListener('touchstart', (e) => {
-      this._lastTouchT = performance.now();
-      if (e.cancelable) e.preventDefault(); el.classList.add('press'); if (onStart) onStart(e);
+    zone.addEventListener('pointerdown', (e) => {
+      if (!this.enabled || g().state !== 'playing') return;
+      if (this[idKey] !== null) return;              // another finger already owns it
+      if (e.button != null && e.button !== 0 && e.pointerType === 'mouse') return;
+      this[idKey] = e.pointerId;
+      try { zone.setPointerCapture(e.pointerId); } catch (_) { /* not fatal */ }
+      origin.x = e.clientX; origin.y = e.clientY;
+      vecOut.x = 0; vecOut.y = 0;
+      baseEl.style.left = e.clientX + 'px';
+      baseEl.style.top = e.clientY + 'px';
+      knobEl.style.left = e.clientX + 'px';
+      knobEl.style.top = e.clientY + 'px';
+      baseEl.classList.add('show');
+      knobEl.classList.add('show');
+      if (e.cancelable) e.preventDefault();
+      e.stopPropagation();
     }, { passive: false });
-    const end = (e) => {
-      if (e.cancelable) e.preventDefault(); el.classList.remove('press'); if (onEnd) onEnd(e);
+
+    zone.addEventListener('pointermove', (e) => {
+      if (this[idKey] !== e.pointerId) return;       // not ours — ignore
+      const R = this._radius(isLook);
+      let dx = e.clientX - origin.x;
+      let dy = e.clientY - origin.y;
+      const d = Math.hypot(dx, dy);
+      if (d > R) { dx *= R / d; dy *= R / d; }
+      knobEl.style.left = (origin.x + dx) + 'px';
+      knobEl.style.top = (origin.y + dy) + 'px';
+      vecOut.x = dx / R;
+      vecOut.y = dy / R;
+      if (e.cancelable) e.preventDefault();
+    }, { passive: false });
+
+    const release = (e) => {
+      if (this[idKey] !== e.pointerId) return;
+      this[idKey] = null;
+      try { zone.releasePointerCapture(e.pointerId); } catch (_) { /* already gone */ }
+      vecOut.x = 0; vecOut.y = 0;
+      baseEl.classList.remove('show');
+      knobEl.classList.remove('show');
+      if (!isLook) { g().input._touchF = 0; g().input._touchR = 0; }
     };
-    el.addEventListener('touchend', end, { passive: false });
-    el.addEventListener('touchcancel', end, { passive: false });
-    // desktop-mouse fallback (touch-capable laptops, testing) — compat mouse
-    // events that follow a touch are ignored so nothing double-fires
-    const fromTouch = () => performance.now() - (this._lastTouchT || 0) < 800;
+    zone.addEventListener('pointerup', release, { passive: false });
+    zone.addEventListener('pointercancel', release, { passive: false });
+    // Safety net: if the OS/browser steals the pointer, we still let go cleanly.
+    zone.addEventListener('lostpointercapture', release, { passive: false });
+  }
+
+  _radius(isLook) {
+    const s = this.game.settings;
+    return 56 * (isLook ? (s.lookStickSize || 1) : (s.joySize || 1));
+  }
+
+  /** Dead zone + gentle exponential response for fine aim control. */
+  static _shape(mag) {
+    if (mag < DEAD_ZONE) return 0;
+    const t = (mag - DEAD_ZONE) / (1 - DEAD_ZONE);
+    return Math.pow(Math.min(1, t), RESPONSE_CURVE);
+  }
+
+  // =========================================================================
+  // Buttons — one owning pointer each, no duplicate presses/releases
+  // =========================================================================
+  _btn(el, onPress, onRelease) {
+    let owner = null;
+    const press = (e) => {
+      if (owner !== null) return;                    // already held — no duplicate
+      owner = e.pointerId;
+      try { el.setPointerCapture(e.pointerId); } catch (_) { /* not fatal */ }
+      el.classList.add('press');
+      this._lastTouchT = performance.now();
+      if (onPress) onPress(e);
+      if (e.cancelable) e.preventDefault();
+      e.stopPropagation();
+    };
+    const release = (e) => {
+      if (owner === null || e.pointerId !== owner) return;
+      owner = null;
+      el.classList.remove('press');
+      if (onRelease) onRelease(e);
+    };
+    el.addEventListener('pointerdown', press, { passive: false });
+    el.addEventListener('pointerup', release, { passive: false });
+    el.addEventListener('pointercancel', release, { passive: false });
+    el.addEventListener('lostpointercapture', release, { passive: false });
+    // Desktop-mouse convenience for touch-capable laptops; compat mouse events
+    // that follow a touch are ignored so nothing double-fires.
     el.addEventListener('mousedown', (e) => {
-      if (fromTouch()) return;
-      if (e.cancelable) e.preventDefault(); el.classList.add('press'); if (onStart) onStart(e);
+      if (performance.now() - (this._lastTouchT || 0) < 800) return;
+      if (owner !== null) return;
+      owner = 'mouse';
+      el.classList.add('press');
+      if (onPress) onPress(e);
     });
-    el.addEventListener('mouseup', (e) => { if (fromTouch()) return; el.classList.remove('press'); if (onEnd) onEnd(e); });
-    el.addEventListener('mouseleave', () => { if (fromTouch()) return; if (el.classList.contains('press')) { el.classList.remove('press'); if (onEnd) onEnd({}); } });
+    el.addEventListener('mouseup', (e) => {
+      if (owner !== 'mouse') return;
+      owner = null; el.classList.remove('press');
+      if (onRelease) onRelease(e);
+    });
+    el.addEventListener('mouseleave', () => {
+      if (owner !== 'mouse') return;
+      owner = null; el.classList.remove('press');
+      if (onRelease) onRelease({});
+    });
   }
 
   _bindButtons() {
@@ -154,27 +265,30 @@ export class TouchControls {
     const inp = () => this.game.input;
 
     this._btn(this.btnFire,
-      () => { if (g().state === 'playing') { this._fireTouch = true; inp().mouse0 = true; this.vibrate(VIBE.shot); } },
+      () => {
+        if (g().state !== 'playing') return;
+        this._fireTouch = true; inp().mouse0 = true; this.vibrate(VIBE.shot);
+      },
       () => { this._fireTouch = false; inp().mouse0 = false; });
 
-    this._btn(this.btnAim,
+    this._btn(this.btnAds,
       () => {
         if (g().state !== 'playing') return;
         const s = g().settings;
         if (s.aimMode === 'toggle' && g().handsMode === 'gun') {
           this._aimTouch = !this._aimTouch;
           inp().mouse2 = this._aimTouch;
-          this.btnAim.classList.toggle('on', this._aimTouch);
+          this.btnAds.classList.toggle('on', this._aimTouch);
         } else {
           this._aimTouch = true; inp().mouse2 = true;
-          this.btnAim.classList.toggle('on', true);
+          this.btnAds.classList.add('on');
         }
       },
       () => {
         const s = g().settings;
-        if (s.aimMode === 'toggle' && g().handsMode === 'gun') return; // stays toggled
+        if (s.aimMode === 'toggle' && g().handsMode === 'gun') return;   // stays toggled
         this._aimTouch = false; inp().mouse2 = false;
-        this.btnAim.classList.remove('on');
+        this.btnAds.classList.remove('on');
       });
 
     this._btn(this.btnReload,
@@ -191,24 +305,35 @@ export class TouchControls {
     this._btn(this.btnCrouch,
       () => { if (g().state === 'playing') inp().crouch = !inp().crouch; }, null);
 
-    this._btn(this.btnCam,
-      () => { if (g().state === 'playing') inp().camPressed = true; }, null);
+    // Weapon switch: swap slots through the SAME selectWeapon command the
+    // keyboard uses, so no weapon state machine is duplicated.
+    this._btn(this.btnSwitch,
+      () => {
+        if (g().state !== 'playing') return;
+        const game = g();
+        if (game.handsMode !== 'gun') { inp().selectWeapon = 'primary'; this.vibrate(VIBE.ui); return; }
+        inp().selectWeapon = (game.weapons.currentId === game.loadout.primary) ? 'secondary' : 'primary';
+        this.vibrate(VIBE.ui);
+      }, null);
 
     this._btn(this.btnSprint,
       () => { this._sprintBtn = true; },
       () => { this._sprintBtn = false; });
 
-    this._btn(this.btnWheel,
+    this._btn(this.btnGear,
       () => {
         if (g().state !== 'playing') return;
         this._wheelTouch = true; inp().wheelHeld = true;
         g().wheelX = 0; g().wheelY = 0;
-        g().ui.moveWheelCursor(0, 0);
+        if (g().ui && g().ui.moveWheelCursor) g().ui.moveWheelCursor(0, 0);
       },
       () => { this._wheelTouch = false; inp().wheelHeld = false; });
 
     this._btn(this.btnMap,
       () => { if (g().state === 'playing' && g().tacmap) g().tacmap.toggle(); }, null);
+
+    this._btn(this.btnCam,
+      () => { if (g().state === 'playing') inp().camPressed = true; }, null);
 
     this._btn(this.btnPause,
       () => {
@@ -217,106 +342,19 @@ export class TouchControls {
         else if (st === 'paused') g().resume();
       }, null);
 
-    this._btn(this.btnInteract,
-      () => {
-        if (g().state !== 'playing') return;
-        this._interactTouch = true;
-        inp().interactPressed = true;
-        inp().interactHeld = true;
-      },
-      () => { this._interactTouch = false; inp().interactHeld = false; });
-
-    this._btn(this.pickBtn,
-      () => {
-        if (g().state !== 'playing') return;
-        this._interactTouch = true;
-        inp().interactPressed = true;
-        inp().interactHeld = true;
-      },
-      () => { this._interactTouch = false; inp().interactHeld = false; });
+    const pressInteract = () => {
+      if (g().state !== 'playing') return;
+      this._interactTouch = true;
+      inp().interactPressed = true;
+      inp().interactHeld = true;
+    };
+    const releaseInteract = () => { this._interactTouch = false; inp().interactHeld = false; };
+    this._btn(this.btnInteract, pressInteract, releaseInteract);
+    this._btn(this.pickBtn, pressInteract, releaseInteract);
   }
 
   // =========================================================================
-  // Joystick + look drags
-  // =========================================================================
-  _moveTouch(e, type) {
-    const g = this.game;
-    if (!this.enabled || g.state !== 'playing') return;
-    if (type === 'touchstart') {
-      if (this.moveId !== null) return;
-      const t = e.changedTouches[0];
-      this.moveId = t.identifier;
-      this.moveOrigin.x = t.clientX; this.moveOrigin.y = t.clientY;
-      this.joyBase.style.left = t.clientX + 'px';
-      this.joyBase.style.top = t.clientY + 'px';
-      this.joyKnob.style.left = t.clientX + 'px';
-      this.joyKnob.style.top = t.clientY + 'px';
-      this.joyBase.classList.add('show');
-      this.joyKnob.classList.add('show');
-      return;
-    }
-    if (type === 'touchmove' && this.moveId !== null) {
-      for (const t of e.changedTouches) {
-        if (t.identifier !== this.moveId) continue;
-        const R = 52 * (g.settings.joySize || 1);
-        let dx = t.clientX - this.moveOrigin.x;
-        let dy = t.clientY - this.moveOrigin.y;
-        const d = Math.hypot(dx, dy);
-        if (d > R) { dx *= R / d; dy *= R / d; }
-        this.joyKnob.style.left = (this.moveOrigin.x + dx) + 'px';
-        this.joyKnob.style.top = (this.moveOrigin.y + dy) + 'px';
-        const mag = Math.min(1, d / R);
-        this._joyMag = mag < 0.14 ? 0 : mag;           // dead zone
-        const k = this._joyMag / (mag || 1);
-        g.input._touchF = -(dy * k) / R;                 // up = forward
-        g.input._touchR = (dx * k) / R;
-        if (this._joyMag === 0) { g.input._touchF = 0; g.input._touchR = 0; }
-      }
-      return;
-    }
-    // touchend / cancel
-    for (const t of e.changedTouches) {
-      if (t.identifier !== this.moveId) continue;
-      this.moveId = null;
-      this._joyMag = 0;
-      g.input._touchF = 0; g.input._touchR = 0;
-      this.joyBase.classList.remove('show');
-      this.joyKnob.classList.remove('show');
-    }
-  }
-
-  _layerTouch(e, type) {
-    const g = this.game;
-    if (!this.enabled || g.state !== 'playing') return;
-    if (type === 'touchstart') {
-      if (this.lookId !== null) return;
-      const t = e.changedTouches[0];
-      this.lookId = t.identifier;
-      this.lookLast.x = t.clientX; this.lookLast.y = t.clientY;
-      return;
-    }
-    if (type === 'touchmove' && this.lookId !== null) {
-      for (const t of e.changedTouches) {
-        if (t.identifier !== this.lookId) continue;
-        const s = g.settings;
-        const ads = g.input.mouse2 && g.handsMode === 'gun';
-        const sens = (s.lookSens != null ? s.lookSens : 1) * (ads ? (s.aimSens != null ? s.aimSens : 0.8) : 1);
-        const sticky = (ads && this._assistTarget) ? 0.68 : 1;   // aim-assist stickiness
-        let dx = t.clientX - this.lookLast.x;
-        let dy = t.clientY - this.lookLast.y;
-        this.lookLast.x = t.clientX; this.lookLast.y = t.clientY;
-        g.input.lookX += dx * sens * sticky;
-        g.input.lookY += (s.invertY ? -dy : dy) * sens * sticky;
-      }
-      return;
-    }
-    for (const t of e.changedTouches) {
-      if (t.identifier === this.lookId) this.lookId = null;
-    }
-  }
-
-  // =========================================================================
-  // Runtime: visibility, contextual states, haptics, aim assist
+  // Runtime
   // =========================================================================
   setEnabled(on) {
     this.enabled = !!on;
@@ -327,37 +365,60 @@ export class TouchControls {
   _resetInputs() {
     const inp = this.game.input;
     inp._touchF = 0; inp._touchR = 0;
-    inp.mouse0 = false; inp.mouse2 = false; inp.sprint = inp.sprint && !this._sprintBtn;
+    inp.mouse0 = false; inp.mouse2 = false;
+    inp.sprint = inp.sprint && !this._sprintBtn;
     inp.interactHeld = false; inp.wheelHeld = false; inp.spaceHeld = false;
     this.moveId = null; this.lookId = null;
-    this.joyBase.classList.remove('show'); this.joyKnob.classList.remove('show');
-    this.btnAim.classList.remove('on');
+    this.moveVec.x = 0; this.moveVec.y = 0;
+    this.lookVec.x = 0; this.lookVec.y = 0;
+    for (const el of [this.moveBase, this.moveKnob, this.lookBase, this.lookKnob]) {
+      if (el) el.classList.remove('show');
+    }
+    if (this.btnAds) this.btnAds.classList.remove('on');
     this._sprintBtn = false; this._fireTouch = false; this._aimTouch = false;
+    this._sprintWrote = false; this._autoFire = false;
   }
 
   applySettings() {
-    // CSS vars are applied globally by game.applySettings; nothing heavy here.
     const s = this.game.settings;
-    if (s.aimMode === 'hold') { this._aimTouch = false; this.btnAim && this.btnAim.classList.remove('on'); }
+    if (s.aimMode === 'hold') {
+      this._aimTouch = false;
+      if (this.btnAds) this.btnAds.classList.remove('on');
+    }
+    this._applyOrientation();
   }
 
   onResize() {
-    // release drags — browser cancels touches on orientation change anyway
-    if (this.moveId !== null) {
-      this.moveId = null; this._joyMag = 0;
-      this.game.input._touchF = 0; this.game.input._touchR = 0;
-      this.joyBase.classList.remove('show'); this.joyKnob.classList.remove('show');
+    // Release drags — the browser cancels pointers on orientation change anyway.
+    this.moveId = null; this.lookId = null;
+    this.moveVec.x = 0; this.moveVec.y = 0;
+    this.lookVec.x = 0; this.lookVec.y = 0;
+    const inp = this.game.input;
+    if (inp) { inp._touchF = 0; inp._touchR = 0; }
+    for (const el of [this.moveBase, this.moveKnob, this.lookBase, this.lookKnob]) {
+      if (el) el.classList.remove('show');
     }
-    this.lookId = null;
+    this._applyOrientation();
+  }
+
+  _applyOrientation() {
+    const portrait = window.innerHeight > window.innerWidth;
+    const cls = portrait ? 'portrait' : 'landscape';
+    if (this._orientation === cls) return;
+    this._orientation = cls;
+    this.layer.classList.remove('portrait', 'landscape');
+    this.layer.classList.add(cls);
   }
 
   vibrate(pattern) {
-    if (!this.enabled || !this.game.settings.vibration) return;
-    if (!navigator.vibrate) return;
-    const now = performance.now();
-    if (now - this._vibeCd < 70) return;
-    this._vibeCd = now;
-    try { navigator.vibrate(pattern); } catch (e) { /* unsupported */ }
+    try {
+      if (!this.enabled || !this.game.settings.vibration) return;
+      if (typeof navigator === 'undefined' || !navigator.vibrate) return;  // fail safe
+      const now = performance.now();
+      if (now - this._vibeCd < 70) return;
+      this._vibeCd = now;
+      navigator.vibrate(pattern);
+    } catch (_) { /* unsupported — never throw */ }
   }
 
   update(dt) {
@@ -366,160 +427,124 @@ export class TouchControls {
     const playing = g.state === 'playing';
     const mapOpen = g.tacmap && g.tacmap.open;
 
-    // layer visibility: only while actively playing (not paused, map closed)
-    const showLayer = playing && !mapOpen;
-    if (this._layerShown !== showLayer) {
-      this._layerShown = showLayer;
-      this.layer.style.visibility = showLayer ? 'visible' : 'hidden';
-      if (!showLayer) this._resetInputs();
+    // While the tactical map is up, only MAP and PAUSE stay reachable (the
+    // `map-open` class filters the rest in CSS), so the same button that
+    // opened the map can close it again.
+    if (this._mapShown !== mapOpen) {
+      this._mapShown = mapOpen;
+      this.layer.classList.toggle('map-open', !!mapOpen);
+      // the stick zones vanish with the class, so drop any held stick now —
+      // otherwise a finger released over hidden DOM would leave it stuck on
+      if (mapOpen) this._resetInputs();
     }
-    if (!showLayer) return;
+    if (this._layerShown !== playing) {
+      this._layerShown = playing;
+      this.layer.style.visibility = playing ? 'visible' : 'hidden';
+      if (!playing) this._resetInputs();
+    }
+    if (!playing) return;
+    if (mapOpen) return;              // no stick driving while the map is up
 
-    // vehicle context: show CAM, relabel JUMP as brake
+    const s = g.settings;
+
+    // ---- movement stick -> analog move axes ------------------------------
+    if (this.moveId !== null) {
+      const mag = Math.min(1, Math.hypot(this.moveVec.x, this.moveVec.y));
+      const shaped = TouchControls._shape(mag);
+      const k = mag > 0.0001 ? shaped / mag : 0;
+      g.input._touchF = -(this.moveVec.y * k);      // up on screen = forward
+      g.input._touchR = this.moveVec.x * k;
+    }
+
+    // ---- look stick -> analog look rate ----------------------------------
+    if (this.lookId !== null) {
+      const mag = Math.min(1, Math.hypot(this.lookVec.x, this.lookVec.y));
+      const shaped = TouchControls._shape(mag);
+      const k = mag > 0.0001 ? shaped / mag : 0;
+      const ads = g.input.mouse2 && g.handsMode === 'gun';
+      const sens = (s.lookSens != null ? s.lookSens : 1) * (ads ? (s.aimSens != null ? s.aimSens : 0.8) : 1);
+      const sticky = (ads && this._assistTarget) ? 0.68 : 1;
+      g.input.lookX += this.lookVec.x * k * LOOK_RATE * sens * sticky * dt;
+      g.input.lookY += (s.invertY ? -this.lookVec.y : this.lookVec.y) * k * LOOK_RATE * sens * sticky * dt;
+    }
+
+    // ---- vehicle context -------------------------------------------------
     const inVeh = !!g.vehicleMode;
     this.btnCam.classList.toggle('hidden', !inVeh);
-    this.btnJump.textContent = inVeh ? 'BRK' : 'JUMP';
+    this.btnJump.textContent = inVeh ? 'BRAKE' : 'JUMP';
     if (inVeh) {
-      // handbrake is a hold: keep spaceHeld synced with brake button
       g.input.spaceHeld = this._brakeTouch;
     } else if (this._jumpHoldT > 0) {
       this._jumpHoldT -= dt;
       if (this._jumpHoldT <= 0) g.input.spaceHeld = false;
     }
 
-    // AIM button doubles as USE/DETONATE for throwables & utilities
+    // ---- ADS button doubles as USE/DETONATE ------------------------------
     const hands = g.handsMode || 'gun';
-    this.btnAim.textContent = hands === 'gun' ? 'AIM' : hands === 'throwable' ? 'ALT' : 'USE';
-    if (hands !== 'gun' && this._aimTouch && g.settings.aimMode === 'toggle') {
-      this._aimTouch = false; g.input.mouse2 = false; this.btnAim.classList.remove('on');
+    this.btnAds.textContent = hands === 'gun' ? 'ADS' : hands === 'throwable' ? 'ALT' : 'USE';
+    if (hands !== 'gun' && this._aimTouch && s.aimMode === 'toggle') {
+      this._aimTouch = false; g.input.mouse2 = false; this.btnAds.classList.remove('on');
     }
 
-    // sprint: button hold OR auto-sprint at full joystick deflection
-    const auto = g.settings.autoSprint && this._joyMag > 0.93;
+    // ---- sprint: button hold OR auto-sprint at full stick deflection -----
+    const moveMag = Math.hypot(g.input._touchF || 0, g.input._touchR || 0);
+    const auto = s.autoSprint && moveMag > 0.93;
     const want = !!(this._sprintBtn || auto);
     if (want) { g.input.sprint = true; this._sprintWrote = true; }
     else if (this._sprintWrote) { g.input.sprint = false; this._sprintWrote = false; }
     this.btnSprint.classList.toggle('on', want);
 
-    // auto-fire (optional): only when aim assist has a target and holding aim
-    if (g.settings.autoFire && hands === 'gun' && this._assistTarget && g.input.mouse2 && !this._fireTouch) {
+    // ---- optional auto-fire (only with an aim-assist target while ADS) ----
+    if (s.autoFire && hands === 'gun' && this._assistTarget && g.input.mouse2 && !this._fireTouch) {
       g.input.mouse0 = true;
       this._autoFire = true;
     } else if (this._autoFire && !this._fireTouch) {
       g.input.mouse0 = false; this._autoFire = false;
     }
 
-    // contextual INTERACT button + weapon pickup card
-    const it = g.interactTarget;
+    // ---- contextual INTERACT + pickup card -------------------------------
     const promptEl = document.getElementById('interact-prompt');
     const hasPrompt = promptEl && !promptEl.classList.contains('hidden');
-    if (hasPrompt) {
-      const label = it
-        ? ((it.getPrompt ? it.getPrompt() : it.prompt) || 'INTERACT')
-        : ((document.getElementById('interact-text') || {}).textContent || 'INTERACT');
-      const clean = String(label).replace(/\[F\]/g, '').replace(/^HOLD\s*—?\s*/i, '').replace(/\s+/g, ' ').trim();
-      this.btnInteract.textContent = (it && it.hold > 0 ? 'HOLD — ' : '') + clean;
-      this.btnInteract.classList.remove('hidden');
-    } else {
-      this.btnInteract.classList.add('hidden');
-    }
+    this.btnInteract.classList.toggle('hidden', !hasPrompt);
 
-    // weapon pickup card (name / type / ammo / current weapon / PICK UP|SWAP)
-    const wid = it && it.id && it.id.startsWith('wpn_') ? it.id.split('_')[1] : null;
-    const def = wid ? WEAPON_DEFS[wid] : null;
-    if (def) {
-      const ws = g.weapons;
-      const st = ws.state[wid];
-      const owned = ws.owned.has(wid);
-      const cur = WEAPON_DEFS[ws.currentId] || {};
-      this.pickCard.classList.remove('hidden');
-      this.pickCard.querySelector('#tpick-name').textContent = def.name;
-      this.pickCard.querySelector('#tpick-meta').innerHTML =
-        def.klass + ' · MAG ' + def.magSize + (st ? ' · STOCK ' + (st.mag + st.reserve) : '') +
-        '<br>CURRENT: ' + (cur.name || '—') + ' · ' + (cur.klass || '');
-      this.pickCard.querySelector('#tpick-take').textContent = owned ? 'TAKE AMMO' : (ws.isSlotFull && ws.isSlotFull(wid) ? 'SWAP' : 'PICK UP');
-    } else {
-      this.pickCard.classList.add('hidden');
-    }
-
-    // aim assist: subtle magnetic pull while aiming (spec §36)
-    this._updateAimAssist(dt);
-
-    // haptics from state deltas (no gameplay code touched)
-    this._updateHaptics(dt);
+    // ---- haptics and assist bookkeeping ---------------------------------
+    this._haptics(dt);
+    this._aimAssist(dt);
   }
 
-  _updateAimAssist(dt) {
+  _haptics(dt) {
     const g = this.game;
-    const level = g.settings.aimAssist || 'off';
-    this._assistTarget = null;
-    if (level === 'off' || g.handsMode !== 'gun' || !g.input.mouse2 || g.vehicleMode) return;
-    if (!g.enemies || !g.enemies.list) return;
-    const rate = level === 'low' ? 0.55 : level === 'medium' ? 1.1 : 1.8;   // deg-ish pull/s
-    const cone = level === 'high' ? 0.16 : 0.11;                             // radians
-    const cam = g.camera;
-    cam.getWorldDirection(this._dir || (this._dir = new (cam.position.constructor)()));
-    let best = null, bestAng = cone;
-    for (const e of g.enemies.list) {
-      if (!e.alive) continue;
-      const dx = e.pos.x - cam.position.x;
-      const dy = (e.pos.y + 1.2) - cam.position.y;
-      const dz = e.pos.z - cam.position.z;
-      const len = Math.hypot(dx, dy, dz);
-      if (len < 0.5 || len > 90) continue;
-      const dot = (dx * this._dir.x + dy * this._dir.y + dz * this._dir.z) / len;
-      const ang = Math.acos(Math.max(-1, Math.min(1, dot)));
-      if (ang < bestAng) { bestAng = ang; best = e; }
+    const st = g.stats || {};
+    if (st.shots > this._lastShots) {
+      this._lastShots = st.shots;
+      if (this._fireTouch || this._autoFire) this.vibrate(VIBE.shot);
     }
-    if (!best) return;
-    this._assistTarget = best;
-    // gentle rotational pull — never a snap
-    const px = best.pos.x - cam.position.x;
-    const pz = best.pos.z - cam.position.z;
-    const py = (best.pos.y + 1.35) - cam.position.y;
-    const wantYaw = Math.atan2(-px, -pz);
-    let dYaw = wantYaw - g.player.yaw;
-    while (dYaw > Math.PI) dYaw -= Math.PI * 2;
-    while (dYaw < -Math.PI) dYaw += Math.PI * 2;
-    const wantPitch = -Math.atan2(py, Math.hypot(px, pz));
-    const dPitch = wantPitch - g.player.pitch;
-    const k = Math.min(1, rate * dt);
-    g.player.yaw += dYaw * k * 0.35;
-    g.player.pitch += dPitch * k * 0.35;
-  }
-
-  _updateHaptics(dt) {
-    const g = this.game;
-    const st = g.stats;
-    // fired a shot
-    if (st.shots > this._lastShots) { this._lastShots = st.shots; if (this._fireTouch || this._autoFire) this.vibrate(VIBE.shot); }
-    // player took damage
-    const hp = g.player.health;
-    if (hp < this._lastHealth - 0.5) this.vibrate(VIBE.damage);
-    this._lastHealth = hp;
-    // hit registered on enemy
-    if (st.hits > (this._lastHits || 0)) { this.vibrate(VIBE.hit); }
-    this._lastHits = st.hits;
-    // vehicle collision (sharp speed loss while driving)
-    if (g.vehicleMode) {
-      const sp = Math.abs(g.vehicleMode.speed);
-      if (this._lastSpeed - sp > 6) this.vibrate(VIBE.collision);
-      this._lastSpeed = sp;
-    } else this._lastSpeed = 0;
-    // objective / stage advance
-    const stage = (g.missions && (g.missions.stage || (g.missions.seqStep && g.missions.seqStep.id))) || '';
-    if (stage && stage !== this._lastStage) {
-      if (this._lastStage) this.vibrate(VIBE.objective);
-      this._lastStage = stage;
-    }
-    // interaction/pickup completed (§37)
-    const it = g.interactTarget;
-    if (it && it.used && this._lastUsedId !== it.id) { this._lastUsedId = it.id; this.vibrate(VIBE.pickup); }
-    else if (!it || !it.used) this._lastUsedId = null;
-    // mission complete
+    if (g.player && g.player.health < this._lastHealth) this.vibrate(VIBE.damage);
+    if (g.player) this._lastHealth = g.player.health;
     if (g.state !== this._lastState) {
       if (g.state === 'complete') this.vibrate(VIBE.complete);
       this._lastState = g.state;
     }
+  }
+
+  _aimAssist(dt) {
+    const g = this.game;
+    const level = g.settings.aimAssist || 'off';
+    if (level === 'off' || g.handsMode !== 'gun') { this._assistTarget = null; return; }
+    // Reuse the enemy manager's closest visible target when ADS is engaged.
+    if (!g.input.mouse2) { this._assistTarget = null; return; }
+    let best = null, bestScore = Infinity;
+    const list = (g.enemies && g.enemies.list) || [];
+    for (const e of list) {
+      if (!e.alive) continue;
+      const dx = e.pos.x - g.player.pos.x, dz = e.pos.z - g.player.pos.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 60) continue;
+      const fwd = -Math.sin(g.player.yaw), fwdZ = -Math.cos(g.player.yaw);
+      const dot = (dx * fwd + dz * fwdZ) / Math.max(dist, 0.001);
+      if (dot < 0.9) continue;
+      if (dist < bestScore) { bestScore = dist; best = e; }
+    }
+    this._assistTarget = best;
   }
 }

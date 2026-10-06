@@ -762,6 +762,7 @@ body.daymode #hud #interact-prompt { text-shadow: 0 1px 0 rgba(255, 255, 255, 0.
   --sar: env(safe-area-inset-right, 0px);
   --touch-scale: 1;          /* settings: button size */
   --joy-scale: 1;            /* settings: joystick size */
+  --look-scale: 1;           /* settings: look-stick size */
   --joy-op: 0.55;            /* settings: joystick opacity */
   --btn-op: 0.8;             /* settings: button opacity */
   --hud-scale: 1;            /* settings: HUD scale */
@@ -954,89 +955,238 @@ body.touch-on #subtitle-line { bottom: calc(26% + var(--sab)); }
 
 /* =========================================================
    TOUCH CONTROLS (built by js/touch.js)
+
+   Visual language: layered translucent panels, hairline borders, generous
+   corner radii, restrained accent glow. Nothing is a flat opaque rectangle.
+
+   Layout: every size AND every offset is expressed in the same scaled unit
+   (--tc-u), so the whole cluster scales uniformly with the user's button-size
+   setting and with the tablet boost. Because size and spacing scale by the
+   same factor, the buttons can never collide at any scale.
+
+   Everything is anchored to the safe-area insets, so a notch, rounded corner
+   or home indicator can never cover a control.
    ========================================================= */
-#touch-controls { position: fixed; inset: 0; z-index: 24; pointer-events: none; }
+#touch-controls {
+  position: fixed; inset: 0; z-index: 24; pointer-events: none;
+  --tc-u: calc(var(--touch-scale) * var(--tc-boost, 1));  /* the one scaled unit */
+  --tc-r: 16px;
+}
 #touch-controls.hidden { display: none; }
 #touch-controls > * { pointer-events: auto; }
 
-.tjoy-zone { position: absolute; bottom: 0; width: 44%; height: 62%; touch-action: none; }
-.tjoy-zone.left { left: 0; }
-.tjoy-zone.right { right: 0; width: 56%; height: 78%; }
-.tjoy-base {
-  position: absolute; width: calc(124px * var(--joy-scale)); height: calc(124px * var(--joy-scale));
-  border: 1.5px solid rgba(207,227,216,0.35); border-radius: 50%;
-  background: rgba(10,16,14,calc(0.3 * var(--joy-op) / 0.55));
-  opacity: var(--joy-op);
-  transform: translate(-50%, -50%);
-  display: none;
-}
-.tjoy-knob {
-  position: absolute; width: calc(52px * var(--joy-scale)); height: calc(52px * var(--joy-scale));
-  border-radius: 50%;
-  background: rgba(217,164,65,0.5); border: 1.5px solid rgba(217,164,65,0.9);
-  opacity: var(--joy-op);
-  transform: translate(-50%, -50%);
-  display: none;
-}
-.tjoy-base.show, .tjoy-knob.show { display: block; }
+/* While the tactical map is up only MAP and PAUSE stay reachable, so the same
+   button that opened it can close it. */
+#touch-controls.map-open .tstick-zone,
+#touch-controls.map-open .tbtn:not(.tbtn-map):not(.tbtn-pause),
+#touch-controls.map-open #tpick-card { display: none; }
 
+/* ---------------------------------------------------------- analog sticks -- */
+.tstick-zone {
+  position: absolute; bottom: 0;
+  touch-action: none;                 /* no scroll/zoom from a stick drag */
+  -webkit-tap-highlight-color: transparent;
+}
+.tstick-zone.left  { left: 0;  width: 42%; height: 68%; }
+.tstick-zone.right { right: 0; width: 58%; height: 84%; }
+
+.tstick-base, .tstick-knob {
+  position: absolute; display: none;
+  border-radius: 50%; transform: translate(-50%, -50%);
+  pointer-events: none;               /* purely cosmetic */
+}
+.tstick-base {
+  width: calc(132px * var(--joy-scale)); height: calc(132px * var(--joy-scale));
+  border: 1px solid rgba(207, 227, 216, 0.22);
+  background: radial-gradient(circle, rgba(9,14,12,0.34) 0%, rgba(9,14,12,0.10) 72%, rgba(9,14,12,0) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), inset 0 0 22px rgba(0,0,0,0.30);
+  opacity: var(--joy-op);
+}
+.tstick-base.right { width: calc(132px * var(--look-scale)); height: calc(132px * var(--look-scale)); }
+
+.tstick-knob {
+  width: calc(56px * var(--joy-scale)); height: calc(56px * var(--joy-scale));
+  border: 1px solid rgba(255, 226, 172, 0.7);
+  background: radial-gradient(circle at 34% 28%,
+              rgba(255,236,198,0.92) 0%, rgba(217,164,65,0.62) 58%, rgba(122,84,22,0.55) 100%);
+  box-shadow: 0 3px 12px rgba(0,0,0,0.5), 0 0 14px rgba(217,164,65,0.18);
+  opacity: calc(var(--joy-op) + 0.25);
+}
+.tstick-knob.right { width: calc(56px * var(--look-scale)); height: calc(56px * var(--look-scale)); }
+.tstick-base.show, .tstick-knob.show { display: block; }
+
+/* --------------------------------------------------------------- buttons -- */
 .tbtn {
   position: absolute;
   display: flex; align-items: center; justify-content: center;
-  width: calc(58px * var(--touch-scale)); height: calc(58px * var(--touch-scale));
-  border-radius: 50%;
-  border: 1.5px solid rgba(207,227,216,0.4);
-  background: rgba(10,16,14,0.5);
+  min-width: calc(58px * var(--tc-u)); min-height: calc(58px * var(--tc-u));
+  border-radius: var(--tc-r);
+  border: 1px solid rgba(207, 227, 216, 0.20);
+  background: linear-gradient(180deg, rgba(30,38,34,0.52) 0%, rgba(8,12,11,0.58) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.055), 0 4px 14px rgba(0,0,0,0.32);
   color: var(--hud-color);
-  font-family: var(--font-mono); font-size: calc(9px * var(--touch-scale)); letter-spacing: 1px;
+  font-family: var(--font-mono);
+  font-size: calc(9.5px * var(--tc-u));
+  letter-spacing: 1.2px;
   opacity: var(--btn-op);
   touch-action: none; user-select: none; -webkit-user-select: none;
-  text-align: center; line-height: 1.1;
+  -webkit-tap-highlight-color: transparent;
+  text-align: center; line-height: 1.12;
+  transition: transform .07s ease, background .12s ease, border-color .12s ease, box-shadow .12s ease;
 }
-.tbtn.press { background: rgba(217,164,65,0.4); border-color: var(--accent); color: #fff; }
+.tbtn.press {
+  transform: scale(0.93);
+  background: linear-gradient(180deg, rgba(217,164,65,0.40) 0%, rgba(120,82,22,0.34) 100%);
+  border-color: var(--accent);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 0 16px rgba(217,164,65,0.28);
+  color: #fff;
+}
 .tbtn.hidden { display: none; }
+body.reduce-motion .tbtn { transition: none; }
+
+/* ---- Primary: FIRE — largest, circular, warm accent, thumb-reachable ---- */
 .tbtn-fire {
-  width: calc(92px * var(--touch-scale)); height: calc(92px * var(--touch-scale));
-  right: calc(18px + var(--sar)); bottom: calc(96px + var(--sab));
-  border-color: rgba(224,112,90,0.65); color: #ffd9cf; font-size: calc(12px * var(--touch-scale));
+  width:  calc(96px * var(--tc-u)); height: calc(96px * var(--tc-u));
+  min-width: 0; border-radius: 50%;
+  right: calc(20px * var(--tc-u) + var(--sar));
+  bottom: calc(96px * var(--tc-u) + var(--sab));
+  border: 1.5px solid rgba(224,112,90,0.55);
+  background: linear-gradient(180deg, rgba(72,32,26,0.55) 0%, rgba(16,10,9,0.62) 100%);
+  color: #ffd9cf; font-size: calc(12px * var(--tc-u)); letter-spacing: 2px;
 }
-.tbtn-aim {
-  width: calc(66px * var(--touch-scale)); height: calc(66px * var(--touch-scale));
-  right: calc(122px + var(--sar)); bottom: calc(58px + var(--sab));
+.tbtn-fire.press {
+  background: linear-gradient(180deg, rgba(224,112,90,0.55) 0%, rgba(96,36,26,0.45) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 0 20px rgba(224,112,90,0.35);
 }
-.tbtn-aim.on { background: rgba(120,180,255,0.35); border-color: #9fd0ff; }
-.tbtn-reload { right: calc(30px + var(--sar)); bottom: calc(212px + var(--sab)); }
-.tbtn-jump { right: calc(126px + var(--sar)); bottom: calc(160px + var(--sab)); }
-.tbtn-crouch { right: calc(204px + var(--sar)); bottom: calc(96px + var(--sab)); }
-.tbtn-sprint { left: calc(16px + var(--sal)); bottom: calc(212px + var(--sab)); }
-.tbtn-sprint.on { background: rgba(160,220,170,0.3); border-color: #9fd66a; }
+
+/* ---- Primary: ADS — circular, cool accent ---- */
+.tbtn-ads {
+  width: calc(70px * var(--tc-u)); height: calc(70px * var(--tc-u));
+  min-width: 0; border-radius: 50%;
+  right: calc(124px * var(--tc-u) + var(--sar));
+  bottom: calc(52px * var(--tc-u) + var(--sab));
+  font-size: calc(11px * var(--tc-u)); letter-spacing: 1.6px;
+}
+.tbtn-ads.on {
+  background: linear-gradient(180deg, rgba(120,180,255,0.34) 0%, rgba(12,24,40,0.55) 100%);
+  border-color: rgba(159,208,255,0.75); color: #e6f3ff;
+}
+
+/* ---- Secondary cluster — right thumb ---- */
+.tbtn-jump {
+  right: calc(128px * var(--tc-u) + var(--sar));
+  bottom: calc(140px * var(--tc-u) + var(--sab));
+}
+.tbtn-switch {
+  right: calc(128px * var(--tc-u) + var(--sar));
+  bottom: calc(212px * var(--tc-u) + var(--sab));
+}
+.tbtn-crouch {
+  right: calc(202px * var(--tc-u) + var(--sar));
+  bottom: calc(52px * var(--tc-u) + var(--sab));
+}
+.tbtn-crouch.on, .tbtn-sprint.on {
+  background: linear-gradient(180deg, rgba(160,220,170,0.30) 0%, rgba(10,20,14,0.55) 100%);
+  border-color: rgba(159,214,106,0.7);
+}
+.tbtn-reload {
+  right: calc(39px * var(--tc-u) + var(--sar));
+  bottom: calc(208px * var(--tc-u) + var(--sab));
+}
+.tbtn-cam {
+  right: calc(206px * var(--tc-u) + var(--sar));
+  bottom: calc(128px * var(--tc-u) + var(--sab));
+  min-width: calc(50px * var(--tc-u)); min-height: calc(50px * var(--tc-u));
+  font-size: calc(9px * var(--tc-u));
+}
+
+/* ---- Secondary cluster — left thumb ---- */
+.tbtn-sprint {
+  left: calc(20px * var(--tc-u) + var(--sal));
+  bottom: calc(150px * var(--tc-u) + var(--sab));
+}
+.tbtn-gear {
+  left: calc(20px * var(--tc-u) + var(--sal));
+  bottom: calc(222px * var(--tc-u) + var(--sab));
+}
+.tbtn-map {
+  left: calc(92px * var(--tc-u) + var(--sal));
+  bottom: calc(222px * var(--tc-u) + var(--sab));
+  min-width: calc(52px * var(--tc-u)); min-height: calc(52px * var(--tc-u));
+}
+
+/* ---- Utility — top-left, always clear of the notch ---- */
+.tbtn-pause {
+  left: calc(12px * var(--tc-u) + var(--sal));
+  top:   calc(10px * var(--tc-u) + var(--sat));
+  min-width: calc(46px * var(--tc-u)); min-height: calc(46px * var(--tc-u));
+  border-radius: 12px;
+  font-size: calc(12px * var(--tc-u));
+}
+
+/* ---- Contextual INTERACT — pill, centred, only when a prompt is live ---- */
 .tbtn-interact {
   left: 50%; bottom: calc(30% + var(--sab)); transform: translateX(-50%);
-  width: auto; min-width: calc(150px * var(--touch-scale)); height: calc(52px * var(--touch-scale));
-  border-radius: 26px; padding: 0 18px;
-  border-color: var(--accent); color: var(--accent); font-size: calc(11px * var(--touch-scale));
+  width: auto; min-width: calc(158px * var(--tc-u));
+  min-height: calc(52px * var(--tc-u));
+  border-radius: 26px; padding: 0 20px;
+  border-color: var(--accent); color: var(--accent);
+  background: linear-gradient(180deg, rgba(60,46,18,0.58) 0%, rgba(12,10,7,0.62) 100%);
+  font-size: calc(11px * var(--tc-u)); letter-spacing: 1.6px;
 }
-.tbtn-wheel { left: calc(16px + var(--sal)); bottom: calc(280px + var(--sab)); }
-.tbtn-map { left: calc(88px + var(--sal)); bottom: calc(252px + var(--sab)); width: calc(48px * var(--touch-scale)); height: calc(48px * var(--touch-scale)); }
-.tbtn-pause {
-  left: calc(10px + var(--sal)); top: calc(10px + var(--sat));
-  width: calc(44px * var(--touch-scale)); height: calc(44px * var(--touch-scale));
-}
-.tbtn-cam { right: calc(204px + var(--sar)); bottom: calc(196px + var(--sab)); width: calc(46px * var(--touch-scale)); height: calc(46px * var(--touch-scale)); }
-.tbtn-use { right: calc(30px + var(--sar)); bottom: calc(284px + var(--sab)); width: calc(46px * var(--touch-scale)); height: calc(46px * var(--touch-scale)); }
 
-/* weapon pickup card (touch) */
+/* ------------------------------------------------- weapon pickup card ----- */
 #tpick-card {
   position: absolute; left: 50%; bottom: calc(38% + var(--sab)); transform: translateX(-50%);
   width: min(340px, calc(100vw - 32px));
-  background: rgba(8,12,10,0.88); border: 1px solid rgba(217,164,65,0.5);
-  padding: 10px 14px; font-family: var(--font-mono);
+  border-radius: 14px;
+  border: 1px solid rgba(217,164,65,0.45);
+  background: linear-gradient(180deg, rgba(20,17,10,0.88) 0%, rgba(8,12,10,0.90) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 30px rgba(0,0,0,0.5);
+  padding: 12px 16px; font-family: var(--font-mono);
 }
 #tpick-card.hidden { display: none; }
 .tpick-head { font-size: 9px; letter-spacing: 3px; color: var(--accent); margin-bottom: 4px; }
 .tpick-name { font-size: 15px; letter-spacing: 2px; color: #e8f2ec; }
 .tpick-meta { font-size: 10px; color: var(--hud-dim); margin-top: 3px; letter-spacing: 1px; line-height: 1.5; }
 .tpick-btn { margin-top: 8px; width: 100%; min-height: 44px; }
+
+/* --------------------------------------------------------- breakpoints --- */
+
+/* Very short landscape (small phones): tighten the vertical stack.
+   The default stack needs ~280px of height; this trims it to ~215px. */
+@media (max-height: 380px) {
+  #touch-controls { --tc-r: 13px; }
+  .tbtn-fire   { bottom: calc(70px  * var(--tc-u) + var(--sab)); }
+  .tbtn-ads    { bottom: calc(38px  * var(--tc-u) + var(--sab)); }
+  .tbtn-jump   { bottom: calc(112px * var(--tc-u) + var(--sab)); }
+  .tbtn-switch { bottom: calc(174px * var(--tc-u) + var(--sab)); }
+  .tbtn-crouch { bottom: calc(38px  * var(--tc-u) + var(--sab)); }
+  .tbtn-cam    { bottom: calc(104px * var(--tc-u) + var(--sab)); }
+  .tbtn-reload { bottom: calc(174px * var(--tc-u) + var(--sab)); }
+  .tbtn-sprint { bottom: calc(120px * var(--tc-u) + var(--sab)); }
+  .tbtn-gear   { bottom: calc(182px * var(--tc-u) + var(--sab)); }
+  .tbtn-map    { bottom: calc(182px * var(--tc-u) + var(--sab)); }
+}
+
+/* Portrait (tablets — phones are covered by the rotate prompt): the thumb
+   clusters sit a little lower and the sticks get more room. */
+#touch-controls.portrait .tbtn-fire   { bottom: calc(120px * var(--tc-u) + var(--sab)); }
+#touch-controls.portrait .tbtn-ads    { bottom: calc(62px  * var(--tc-u) + var(--sab)); }
+#touch-controls.portrait .tbtn-jump   { bottom: calc(164px * var(--tc-u) + var(--sab)); }
+#touch-controls.portrait .tbtn-switch { bottom: calc(232px * var(--tc-u) + var(--sab)); }
+#touch-controls.portrait .tbtn-reload { bottom: calc(232px * var(--tc-u) + var(--sab)); }
+#touch-controls.portrait .tbtn-crouch { bottom: calc(62px  * var(--tc-u) + var(--sab)); }
+#touch-controls.portrait .tbtn-sprint { bottom: calc(130px * var(--tc-u) + var(--sab)); }
+#touch-controls.portrait .tstick-zone.left  { width: 46%; height: 58%; }
+#touch-controls.portrait .tstick-zone.right { width: 54%; height: 70%; }
+
+/* Tablets: bigger hands, bigger targets — multiplies the user's own setting. */
+@media (min-width: 900px) and (min-height: 600px) {
+  #touch-controls { --tc-boost: 1.16; --tc-r: 18px; }
+  .tstick-zone.left  { width: 38%; }
+  .tstick-zone.right { width: 46%; }
+}
 
 /* --- mobile bottom navigation --- */
 #mobnav {

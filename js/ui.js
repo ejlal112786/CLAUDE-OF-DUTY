@@ -1162,6 +1162,7 @@ export class UI {
     rng('set-look-sens', 'val-look-sens', 'lookSens', 1);
     rng('set-aim-sens', 'val-aim-sens', 'aimSens', 0.8);
     rng('set-joy-size', 'val-joy-size', 'joySize', 1);
+    rng('set-look-stick-size', 'val-look-stick-size', 'lookStickSize', 1);
     rng('set-joy-opacity', 'val-joy-opacity', 'joyOpacity', 0.55);
     rng('set-btn-size', 'val-btn-size', 'btnSize', 1);
     rng('set-btn-opacity', 'val-btn-opacity', 'btnOpacity', 0.8);

@@ -79,6 +79,7 @@ const DEFAULT_SETTINGS = {
   // Stage D — touch, accessibility, presentation
   touchControls: 'auto',      // 'auto' | 'on' | 'off'
   joySize: 1.0, joyOpacity: 0.55, btnSize: 1.0, btnOpacity: 0.8,
+  lookStickSize: 1.0,          // right (camera) stick radius multiplier
   lookSens: 1.0, aimSens: 0.8, invertY: false,
   autoSprint: true, aimMode: 'hold', autoFire: false,
   aimAssist: 'low',           // 'off' | 'low' | 'medium' | 'high'
@@ -679,6 +680,7 @@ export class Game {
     };
     bindSelect('set-touch-mode', 'touchControls', () => { this._detectDevice(); });
     bindRange('set-joy-size', 'val-joy-size', 'joySize', v => v.toFixed(2));
+    bindRange('set-look-stick-size', 'val-look-stick-size', 'lookStickSize', v => v.toFixed(2));
     bindRange('set-joy-opacity', 'val-joy-opacity', 'joyOpacity', v => v.toFixed(2));
     bindRange('set-look-sens', 'val-look-sens', 'lookSens', v => v.toFixed(2));
     bindRange('set-aim-sens', 'val-aim-sens', 'aimSens', v => v.toFixed(2));
