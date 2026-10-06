@@ -50,6 +50,7 @@ export class PlayerBody {
     this._sprintT = 0;
     this._adsT = 0;
     this._airT = 0;
+    this._recoil = 0;
     this._lastSpeed = 0;
 
     this._mats = {};
@@ -230,6 +231,16 @@ export class PlayerBody {
   }
 
   /**
+   * Recoil absorption. Called by the weapon system on every shot so the
+   * operator's shoulders and arms take the impulse instead of only the
+   * view model. `strength` is roughly 0..1 (heavier weapons hit harder).
+   */
+  addRecoil(strength) {
+    if (!this.built) return;
+    this._recoil = Math.min(1.4, this._recoil + (strength || 0.2));
+  }
+
+  /**
    * Snap every smoothed value to the player's current state so the rig never
    * lerps across the map from a stale pose (mission start / respawn).
    */
@@ -265,6 +276,9 @@ export class PlayerBody {
     this._adsT += (((player.game.weapons && player.game.weapons.adsT) || 0) - this._adsT) * k(12);
     this._leanT += ((player.lean || 0) - this._leanT) * k(10);
     this._airT += ((grounded ? 0 : 1) - this._airT) * k(9);
+    // recoil absorption: shoulders take the impulse, then settle
+    this._recoil = Math.max(0, this._recoil - dt * (2.4 + this._recoil * 5));
+    const recoil = Math.min(1, this._recoil);
 
     // place the rig: feet on the ground, facing the aim yaw
     this.root.position.set(player.pos.x, player.pos.y, player.pos.z);
@@ -296,7 +310,7 @@ export class PlayerBody {
 
     // ---- torso: forward lean when sprinting, upright when aiming ----------
     const leanFwd = this._sprintT * 9 * DEG + this._crouchT * 12 * DEG - this._adsT * 4 * DEG;
-    this.torso.rotation.x = leanFwd;
+    this.torso.rotation.x = leanFwd - recoil * 5 * DEG;   // shot pushes the shoulders back
     this.torso.rotation.z = -this._leanT * 5 * DEG;
     // head counter-rotates so the operator still looks where they aim
     this.head.rotation.x = -leanFwd * 0.75 + THREE.MathUtils.clamp(
@@ -319,13 +333,13 @@ export class PlayerBody {
     } else {
       // First person: arms are represented by the weapon viewmodel, so the rig
       // arms hang naturally and simply counter-swing with the stride.
-      this.armR.upper.rotation.x = -swing2 * 0.34 * stride - this._crouchT * 10 * DEG;
+      this.armR.upper.rotation.x = -swing2 * 0.34 * stride - this._crouchT * 10 * DEG - recoil * 6 * DEG;
       this.armR.upper.rotation.z = 8 * DEG;
-      this.armR.lower.rotation.x = -22 * DEG - this._crouchT * 18 * DEG;
+      this.armR.lower.rotation.x = -22 * DEG - this._crouchT * 18 * DEG - recoil * 8 * DEG;
 
-      this.armL.upper.rotation.x = swing2 * 0.34 * stride - this._crouchT * 10 * DEG;
+      this.armL.upper.rotation.x = swing2 * 0.34 * stride - this._crouchT * 10 * DEG - recoil * 6 * DEG;
       this.armL.upper.rotation.z = -8 * DEG;
-      this.armL.lower.rotation.x = -22 * DEG - this._crouchT * 18 * DEG;
+      this.armL.lower.rotation.x = -22 * DEG - this._crouchT * 18 * DEG - recoil * 8 * DEG;
     }
 
     this._lastSpeed = speed;

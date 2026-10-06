@@ -119,6 +119,23 @@ export class Player {
     let m = 1;
     if (this.armInjury > 0) m *= 1.3;
     if (this.health < 30) m *= 1.15;
+    // Stance matters: a crouched operator is braced, a leaning one is not.
+    if (this.crouching) m *= 0.72;
+    if (Math.abs(this.lean) > 0.4) m *= 1.12;
+    return m;
+  }
+
+  /**
+   * Weapon-pose stability. Lower = steadier. Used for view-model sway so a
+   * braced stance visibly settles the weapon instead of only shrinking the
+   * crosshair.
+   */
+  stabilityMultiplier() {
+    let m = 1;
+    if (this.crouching) m *= 0.7;                    // braced
+    if (Math.abs(this.lean) > 0.4) m *= 1.15;        // off-axis
+    if (!this.onGround) m *= 1.5;                    // no footing
+    if (this.armInjury > 0) m *= 1.25;
     return m;
   }
   speedMultiplier() {
