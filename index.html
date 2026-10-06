@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>OPERATION: BLACK VECTOR</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2307090b'/%3E%3Cpath d='M2 13 L8 3 L14 13 Z' fill='none' stroke='%23d9a441' stroke-width='1.6'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./assets/vendor/three.module.js"
+  }
+}
+</script>
+</head>
+<body>
+
+<!-- ============ GAME CANVAS CONTAINER ============ -->
+<div id="game-container"></div>
+
+<!-- ============ ERROR OVERLAY ============ -->
+<div id="error-overlay" class="screen hidden">
+  <div class="panel error-panel">
+    <h1 class="glitch-title">SYSTEM FAILURE</h1>
+    <p id="error-message">An unknown error occurred.</p>
+    <p class="hint">This game requires a modern desktop browser with WebGL enabled
+       (Chrome, Edge, Firefox). Pointer Lock and Web Audio are also required.</p>
+  </div>
+</div>
+
+<!-- ============ ROTATE DEVICE (gameplay wants landscape) ============ -->
+<div id="rotate-overlay" class="hidden">
+  <div class="rotate-inner">
+    <svg class="rotate-icon" viewBox="0 0 64 64" width="72" height="72" aria-hidden="true">
+      <rect x="20" y="6" width="24" height="44" rx="3" fill="none" stroke="#d9a441" stroke-width="2.5"/>
+      <path d="M50 34 a18 18 0 0 1 -18 18" fill="none" stroke="#cfe3d8" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M28 52 l4 6 l-10 0 z" fill="#cfe3d8"/>
+    </svg>
+    <div class="rotate-title">ROTATE DEVICE</div>
+    <div class="rotate-sub">LANDSCAPE MODE RECOMMENDED FOR GAMEPLAY</div>
+  </div>
+</div>
+
+<!-- ============ LOADING SCREEN ============ -->
+<div id="screen-loading" class="screen hidden">
+  <div class="loading-wrap">
+    <h1 class="title-main">OPERATION: BLACK VECTOR</h1>
+    <div class="loading-bar-outer"><div id="loading-bar" class="loading-bar-inner"></div></div>
+    <div id="loading-status" class="loading-status">INITIALIZING…</div>
+  </div>
+</div>
+
+<!-- ============ MAIN MENU ============ -->
+<div id="screen-menu" class="screen hidden">
+  <div class="menu-wrap">
+    <div class="menu-brand">
+      <div class="brand-line"></div>
+      <h1 class="title-main">OPERATION:<span class="title-accent">BLACK VECTOR</span></h1>
+      <p class="subtitle">TACTICAL RESPONSE UNIT // NIGHT INSERTION</p>
+      <div class="brand-line"></div>
+    </div>
+    <nav class="menu-buttons">
+      <button id="btn-campaign" class="menu-btn">CAMPAIGN</button>
+      <button id="btn-training" class="menu-btn">TRAINING</button>
+      <button id="btn-missions" class="menu-btn">MISSIONS <span class="btn-badge" id="badge-missions"></span></button>
+      <button id="btn-loadout" class="menu-btn">LOADOUT</button>
+      <button id="btn-intel" class="menu-btn">INTELLIGENCE <span class="btn-badge" id="badge-intel"></span></button>
+      <button id="btn-awards" class="menu-btn">AWARDS <span class="btn-badge" id="badge-awards"></span></button>
+      <button id="btn-stats" class="menu-btn">STATISTICS</button>
+      <button id="btn-settings" class="menu-btn">SETTINGS</button>
+      <button id="btn-credits" class="menu-btn">CREDITS</button>
+      <button id="btn-fullscreen" class="menu-btn">FULLSCREEN</button>
+    </nav>
+    <div class="menu-rank" id="menu-rank"></div>
+    <div class="menu-footer">
+      <span id="menu-version">v2.2 — RESPONSIVE &amp; TOUCH</span>
+      <span class="hint">CAMPAIGN — DEPLOY · MISSIONS — STATUS &amp; UNLOCKS · KEYBOARD + MOUSE OR TOUCH CONTROLS</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ THEATER SELECT ============ -->
+<div id="screen-select" class="screen hidden">
+  <div class="menu-wrap wide">
+    <div class="menu-brand">
+      <div class="brand-line"></div>
+      <h1 class="title-main">SELECT<span class="title-accent">BATTLEFIELD</span></h1>
+      <p class="subtitle">FOUR THEATERS · ONE OPERATOR</p>
+      <div class="brand-line"></div>
+    </div>
+    <div class="loadout-panel">
+      <div class="lo-title">LOADOUT — PRE-DEPLOY CONFIGURATION</div>
+      <div class="lo-grid">
+        <label>PRIMARY<select id="lo-primary"></select></label>
+        <label>SECONDARY<select id="lo-secondary"></select></label>
+        <label>THROWABLE<select id="lo-throwable"></select></label>
+        <label>THROWABLES<select id="lo-tcount"></select></label>
+        <label>UTILITY<select id="lo-utility"></select></label>
+        <label>UTILITY CT<select id="lo-ucount"></select></label>
+      </div>
+      <div class="lo-status"><span id="lo-weight"></span><span id="lo-msg"></span></div>
+    </div>
+    <div class="mission-grid">
+      <button id="btn-mission-facility" class="mission-card">
+        <span class="mc-tag">NIGHT · INFILTRATION</span>
+        <span class="mc-title">KESTREL YARD</span>
+        <span class="mc-desc">Industrial logistics compound. Breach the fence, hack the server wing, survive the response.</span>
+        <span class="mc-flow">9-STAGE CAMPAIGN MISSION</span>
+      </button>
+      <button id="btn-mission-snow" class="mission-card">
+        <span class="mc-tag">SNOW · ASSAULT</span>
+        <span class="mc-title">WHITEOUT RELAY</span>
+        <span class="mc-desc">Frozen relay station above the tree line. Breach loud, clear the compound, reach the helipad.</span>
+        <span class="mc-flow">ASSAULT — CLEAR &amp; EXTRACT</span>
+      </button>
+      <button id="btn-mission-desert" class="mission-card">
+        <span class="mc-tag">DESERT · INFILTRATION</span>
+        <span class="mc-title">DUSTBOWL CACHE</span>
+        <span class="mc-desc">Adobe compound in a dry wadi. Slip the wall, download the cache manifest, walk out north-east.</span>
+        <span class="mc-flow">INFILTRATION WITH TIMED RESPONSE</span>
+      </button>
+      <button id="btn-mission-urban" class="mission-card">
+        <span class="mc-tag">URBAN · INFILTRATION</span>
+        <span class="mc-title">GREYLINE DISTRICT</span>
+        <span class="mc-desc">Abandoned city block. Pass the checkpoint, crack the bank record room, vanish down the alley.</span>
+        <span class="mc-flow">INFILTRATION WITH TIMED RESPONSE</span>
+      </button>
+    </div>
+    <nav class="menu-buttons">
+      <button id="btn-select-back" class="menu-btn wide">BACK</button>
+    </nav>
+  </div>
+</div>
+
+<!-- ============ SETTINGS ============ -->
+<div id="screen-settings" class="screen hidden">
+  <div class="panel settings-panel">
+    <h2 class="panel-title">SETTINGS</h2>
+
+    <div class="setting-row">
+      <label for="set-sens">MOUSE SENSITIVITY</label>
+      <input type="range" id="set-sens" min="0.2" max="3" step="0.05">
+      <span class="setting-val" id="val-sens">1.00</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-fov">FIELD OF VIEW</label>
+      <input type="range" id="set-fov" min="60" max="100" step="1">
+      <span class="setting-val" id="val-fov">75</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-master">MASTER VOLUME</label>
+      <input type="range" id="set-master" min="0" max="1" step="0.05">
+      <span class="setting-val" id="val-master">0.80</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-sfx">EFFECTS VOLUME</label>
+      <input type="range" id="set-sfx" min="0" max="1" step="0.05">
+      <span class="setting-val" id="val-sfx">0.90</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-amb">AMBIENCE VOLUME</label>
+      <input type="range" id="set-amb" min="0" max="1" step="0.05">
+      <span class="setting-val" id="val-amb">0.70</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-quality">GRAPHICS QUALITY</label>
+      <select id="set-quality">
+        <option value="low">LOW</option>
+        <option value="medium" selected>MEDIUM</option>
+        <option value="high">HIGH</option>
+      </select>
+    </div>
+    <div class="setting-row">
+      <label for="set-difficulty">DIFFICULTY</label>
+      <select id="set-difficulty">
+        <option value="recruit">RECRUIT</option>
+        <option value="standard" selected>STANDARD</option>
+        <option value="hard">HARD</option>
+        <option value="veteran">VETERAN</option>
+      </select>
+    </div>
+    <div class="setting-row">
+      <label>&nbsp;</label>
+      <span class="setting-val" id="difficulty-desc"></span>
+    </div>
+    <div class="setting-row">
+      <label for="set-daymode">WHITE MODE</label>
+      <input type="checkbox" id="set-daymode">
+      <span class="setting-val">DAYLIGHT RELIGHT — WHITE SKY, SUN, DIMMED LAMPS</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-perf">PERFORMANCE MODE</label>
+      <input type="checkbox" id="set-perf">
+      <span class="setting-val">REDUCES SHADOWS, PARTICLES, DRAW DISTANCE</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-minimap">MINI-MAP</label>
+      <input type="checkbox" id="set-minimap" checked>
+      <span class="setting-val">LIVE HUD MINI-MAP — FOV, OBJECTIVES, KNOWN CONTACTS</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-minimap-size">MINI-MAP SIZE</label>
+      <select id="set-minimap-size">
+        <option value="s">SMALL</option><option value="m" selected>MEDIUM</option><option value="l">LARGE</option>
+      </select>
+      <span class="setting-val" id="val-minimap-size"></span>
+    </div>
+    <div class="setting-row">
+      <label for="set-minimap-opacity">MINI-MAP OPACITY</label>
+      <input type="range" id="set-minimap-opacity" min="0.3" max="1" step="0.05">
+      <span class="setting-val" id="val-minimap-opacity">0.85</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-minimap-rotate">MINI-MAP ROTATION</label>
+      <select id="set-minimap-rotate">
+        <option value="north" selected>NORTH-UP</option><option value="player">PLAYER-UP</option>
+      </select>
+      <span class="setting-val" id="val-minimap-rotate"></span>
+    </div>
+
+    <div class="setting-row">
+      <label for="set-veh-invert">INVERT VEHICLE STEERING</label>
+      <input type="checkbox" id="set-veh-invert">
+      <span class="setting-val">SWAP LEFT / RIGHT WHILE DRIVING</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-veh-sens">STEERING SENSITIVITY</label>
+      <input type="range" id="set-veh-sens" min="0.4" max="1.8" step="0.05" value="1">
+      <span class="setting-val" id="val-veh-sens">1.00</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-veh-cam">CHASE CAM DISTANCE</label>
+      <input type="range" id="set-veh-cam" min="0.7" max="1.5" step="0.05" value="1">
+      <span class="setting-val" id="val-veh-cam">1.00</span>
+    </div>
+
+    <div class="set-sec">TOUCH CONTROLS</div>
+    <div class="setting-row">
+      <label for="set-touch-mode">TOUCH CONTROLS</label>
+      <select id="set-touch-mode">
+        <option value="auto" selected>AUTO (TOUCH DEVICES)</option><option value="on">ALWAYS ON</option><option value="off">OFF</option>
+      </select>
+    </div>
+    <div class="setting-row">
+      <label for="set-look-sens">LOOK SENSITIVITY</label>
+      <input type="range" id="set-look-sens" min="0.3" max="2.5" step="0.05" value="1">
+      <span class="setting-val" id="val-look-sens">1.00</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-aim-sens">AIM (ADS) SENSITIVITY</label>
+      <input type="range" id="set-aim-sens" min="0.3" max="1.5" step="0.05" value="0.8">
+      <span class="setting-val" id="val-aim-sens">0.80</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-joy-size">JOYSTICK SIZE</label>
+      <input type="range" id="set-joy-size" min="0.7" max="1.5" step="0.05" value="1">
+      <span class="setting-val" id="val-joy-size">1.00</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-joy-opacity">JOYSTICK OPACITY</label>
+      <input type="range" id="set-joy-opacity" min="0.2" max="1" step="0.05" value="0.55">
+      <span class="setting-val" id="val-joy-opacity">0.55</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-btn-size">BUTTON SIZE</label>
+      <input type="range" id="set-btn-size" min="0.7" max="1.5" step="0.05" value="1">
+      <span class="setting-val" id="val-btn-size">1.00</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-btn-opacity">BUTTON OPACITY</label>
+      <input type="range" id="set-btn-opacity" min="0.3" max="1" step="0.05" value="0.8">
+      <span class="setting-val" id="val-btn-opacity">0.80</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-aim-mode">AIM BUTTON MODE</label>
+      <select id="set-aim-mode">
+        <option value="hold" selected>HOLD TO AIM</option><option value="toggle">TOGGLE AIM</option>
+      </select>
+    </div>
+    <div class="setting-row">
+      <label for="set-aim-assist">AIM ASSIST</label>
+      <select id="set-aim-assist">
+        <option value="off">OFF</option><option value="low" selected>LOW</option>
+        <option value="medium">MEDIUM</option><option value="high">HIGH</option>
+      </select>
+    </div>
+    <div class="setting-row">
+      <label for="set-invert-y">INVERT LOOK Y</label>
+      <input type="checkbox" id="set-invert-y">
+      <span class="setting-val">FLIP VERTICAL CAMERA</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-auto-sprint">AUTO SPRINT</label>
+      <input type="checkbox" id="set-auto-sprint" checked>
+      <span class="setting-val">FULL JOYSTICK DEFLECTION SPRINTS</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-auto-fire">AUTO FIRE</label>
+      <input type="checkbox" id="set-auto-fire">
+      <span class="setting-val">FIRE WHILE AIMING AT AN ASSIST TARGET</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-vibration">VIBRATION</label>
+      <input type="checkbox" id="set-vibration" checked>
+      <span class="setting-val">HAPTICS — FIRE, DAMAGE, OBJECTIVES</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-hud-scale">HUD SCALE</label>
+      <input type="range" id="set-hud-scale" min="0.75" max="1.3" step="0.05" value="1">
+      <span class="setting-val" id="val-hud-scale">1.00</span>
+    </div>
+
+    <div class="set-sec">ACCESSIBILITY</div>
+    <div class="setting-row">
+      <label for="set-contrast">HIGH CONTRAST</label>
+      <input type="checkbox" id="set-contrast">
+      <span class="setting-val">STRONGER UI TEXT &amp; PANEL CONTRAST</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-large-text">LARGER TEXT</label>
+      <input type="checkbox" id="set-large-text">
+      <span class="setting-val">INCREASES MENU &amp; PANEL TEXT SIZE</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-reduce-motion">REDUCED MOTION</label>
+      <input type="checkbox" id="set-reduce-motion">
+      <span class="setting-val">MINIMIZES UI ANIMATION</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-shake">CAMERA SHAKE</label>
+      <input type="range" id="set-shake" min="0" max="1.5" step="0.1" value="1">
+      <span class="setting-val" id="val-shake">1.0</span>
+    </div>
+    <div class="setting-row">
+      <label for="set-subtitles">SUBTITLES</label>
+      <input type="checkbox" id="set-subtitles" checked>
+      <span class="setting-val">COMMS, BRIEFINGS &amp; OBJECTIVE LINES</span>
+    </div>
+
+    <button id="btn-settings-back" class="menu-btn wide">BACK</button>
+  </div>
+</div>
+
+<!-- ============ CREDITS ============ -->
+<div id="screen-credits" class="screen hidden">
+  <div class="panel credits-panel">
+    <h2 class="panel-title">CREDITS</h2>
+    <div class="credits-body">
+      <p><b>OPERATION: BLACK VECTOR</b></p>
+      <p>An original tactical first-person shooter prototype.</p>
+      <p>Engine — Three.js (MIT License)</p>
+      <p>All geometry, textures, audio and code in this project are
+         original or procedurally generated. No assets from any
+         existing commercial title are used.</p>
+      <p class="dim">Any resemblance to real persons, organizations,
+         locations or events is entirely coincidental. This is a work of fiction.</p>
+      <p class="dim">Weapon behaviour is stylised game simulation only —
+         not a representation of real-world weapons handling.</p>
+    </div>
+    <button id="btn-credits-back" class="menu-btn wide">BACK</button>
+  </div>
+</div>
+
+<!-- ============ MISSIONS / LOADOUT / INTEL / AWARDS / STATS ============ -->
+<div id="screen-missions" class="screen hidden">
+  <div class="panel list-panel">
+    <h2 class="panel-title">MISSIONS</h2>
+    <div id="missions-list" class="scroll-list"></div>
+    <button id="btn-missions-back" class="menu-btn wide">BACK</button>
+  </div>
+</div>
+
+<div id="screen-loadout" class="screen hidden">
+  <div class="panel list-panel">
+    <h2 class="panel-title">LOADOUT — WEAPON FINISHES</h2>
+    <p class="panel-sub">Cosmetic finishes for all three weapons. Earned by rank.</p>
+    <div id="loadout-list" class="scroll-list"></div>
+    <button id="btn-loadout-back" class="menu-btn wide">BACK</button>
+  </div>
+</div>
+
+<div id="screen-intel" class="screen hidden">
+  <div class="panel list-panel">
+    <h2 class="panel-title">INTELLIGENCE ARCHIVE</h2>
+    <div id="intel-list" class="scroll-list"></div>
+    <button id="btn-intel-back" class="menu-btn wide">BACK</button>
+  </div>
+</div>
+
+<div id="screen-awards" class="screen hidden">
+  <div class="panel list-panel">
+    <h2 class="panel-title">AWARDS</h2>
+    <div id="awards-list" class="scroll-list awards-grid"></div>
+    <button id="btn-awards-back" class="menu-btn wide">BACK</button>
+  </div>
+</div>
+
+<div id="screen-stats" class="screen hidden">
+  <div class="panel list-panel">
+    <h2 class="panel-title">SERVICE RECORD</h2>
+    <div id="stats-list" class="scroll-list"></div>
+    <button id="btn-stats-back" class="menu-btn wide">BACK</button>
+  </div>
+</div>
+
+<!-- ============ MISSION BRIEFING (pre-deploy) ============ -->
+<div id="screen-brief" class="screen hidden">
+  <div class="panel brief-panel">
+    <h2 class="panel-title" id="brief-title">MISSION BRIEFING</h2>
+    <div class="brief-meta" id="brief-meta"></div>
+    <div class="brief-body" id="brief-body"></div>
+    <div class="brief-objectives" id="brief-objectives"></div>
+    <div class="brief-reward" id="brief-reward"></div>
+    <div class="brief-buttons">
+      <button id="btn-brief-start" class="menu-btn wide">START MISSION</button>
+      <div class="brief-buttons-row">
+        <button id="btn-brief-loadout" class="menu-btn">EDIT LOADOUT</button>
+        <button id="btn-brief-back" class="menu-btn">BACK</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MISSION OBJECTIVES (pause overlay) ============ -->
+<div id="screen-objectives" class="screen hidden">
+  <div class="panel list-panel">
+    <h2 class="panel-title">MISSION OBJECTIVES</h2>
+    <div id="objectives-list" class="scroll-list"></div>
+    <button id="btn-objectives-back" class="menu-btn wide">BACK TO PAUSE</button>
+  </div>
+</div>
+
+<!-- ============ PAUSE ============ -->
+<div id="screen-pause" class="screen hidden">
+  <div class="panel pause-panel">
+    <h2 class="panel-title">PAUSED</h2>
+    <button id="btn-resume" class="menu-btn wide">RESUME</button>
+    <button id="btn-pause-objectives" class="menu-btn wide">MISSION OBJECTIVES</button>
+    <button id="btn-pause-map" class="menu-btn wide">TACTICAL MAP</button>
+    <button id="btn-pause-equipment" class="menu-btn wide">EQUIPMENT / LOADOUT</button>
+    <button id="btn-pause-settings" class="menu-btn wide">SETTINGS</button>
+    <button id="btn-restart-cp" class="menu-btn wide">RESTART FROM CHECKPOINT</button>
+    <button id="btn-restart-mission" class="menu-btn wide">RESTART MISSION</button>
+    <button id="btn-quit" class="menu-btn wide">ABORT — MAIN MENU</button>
+    <div class="controls-ref">
+      <span><b>WASD</b> MOVE</span><span><b>SHIFT</b> SPRINT</span><span><b>CTRL</b> CROUCH</span><span><b>SPACE</b> JUMP</span><span><b>Q/E</b> LEAN</span>
+      <span><b>LMB</b> FIRE</span><span><b>RMB</b> AIM</span><span><b>R</b> RELOAD / CLEAR JAM</span><span><b>G</b> FRAG</span><span><b>H</b> HOLD — BANDAGE</span>
+      <span><b>M</b> TAC MAP</span><span><b>F</b> INTERACT</span><span><b>ESC</b> PAUSE</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DEATH ============ -->
+<div id="screen-death" class="screen hidden">
+  <div class="panel death-panel">
+    <h2 class="panel-title death-title">K.I.A.</h2>
+    <p id="death-cause" class="death-cause">You were eliminated by hostile fire.</p>
+    <button id="btn-death-cp" class="menu-btn wide">RESTART FROM CHECKPOINT</button>
+    <button id="btn-death-mission" class="menu-btn wide">RESTART MISSION</button>
+    <button id="btn-death-menu" class="menu-btn wide">MAIN MENU</button>
+  </div>
+</div>
+
+<!-- ============ MISSION COMPLETE ============ -->
+<div id="screen-complete" class="screen hidden">
+  <div class="panel complete-panel debrief-panel">
+    <h2 class="panel-title complete-title">MISSION COMPLETE</h2>
+    <div id="debrief-body" class="debrief-body"></div>
+    <div class="debrief-buttons">
+      <button id="btn-complete-retry" class="menu-btn">REDEPLOY</button>
+      <button id="btn-complete-next" class="menu-btn">NEXT MISSION</button>
+      <button id="btn-complete-menu" class="menu-btn wide">RETURN TO MAIN MENU</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MISSION FAILED ============ -->
+<div id="screen-failed" class="screen hidden">
+  <div class="panel failed-panel">
+    <h2 class="panel-title failed-title">MISSION FAILED</h2>
+    <p id="failed-reason" class="death-cause">The facility entered full lockdown before extraction.</p>
+    <button id="btn-failed-cp" class="menu-btn wide">RESTART FROM CHECKPOINT</button>
+    <button id="btn-failed-mission" class="menu-btn wide">RESTART MISSION</button>
+    <button id="btn-failed-menu" class="menu-btn wide">MAIN MENU</button>
+  </div>
+</div>
+
+<!-- ============ HUD ============ -->
+<div id="hud" class="hidden">
+  <!-- Squad alert state (minimal) -->
+  <div id="alert-chip" class="hidden">UNAWARE</div>
+
+  <!-- Compass strip -->
+  <div id="compass-wrap"><canvas id="compass" width="440" height="36"></canvas></div>
+
+  <!-- Mini-map (settings: on/off, size, opacity, rotation) + map button -->
+  <canvas id="minimap" class="hidden" width="180" height="180"></canvas>
+  <button id="hud-mapbtn" title="Open tactical map (M)">MAP ⌖</button>
+
+  <div id="vignette"></div>
+  <div id="damage-flash"></div>
+  <div id="flashbang"></div>
+
+  <!-- Compass -->
+  <div id="compass">
+    <div id="compass-strip"></div>
+    <div id="compass-marker"></div>
+  </div>
+
+  <!-- Objective -->
+  <div id="hud-objective">
+    <div id="obj-label">OBJECTIVE</div>
+    <div id="obj-text">—</div>
+    <div id="obj-sub"></div>
+    <div id="lockdown-timer" class="hidden"></div>
+  </div>
+
+  <!-- Crosshair -->
+  <div id="crosshair">
+    <div class="ch-tick ch-top"></div>
+    <div class="ch-tick ch-bottom"></div>
+    <div class="ch-tick ch-left"></div>
+    <div class="ch-tick ch-right"></div>
+    <div id="ch-dot"></div>
+  </div>
+  <div id="hitmarker" class="hidden">✕</div>
+  <div id="damage-indicators"></div>
+
+  <!-- Bottom left: health / stamina -->
+  <div id="hud-vitals">
+    <div class="vital-row">
+      <span class="vital-label">ARMOR</span>
+      <div class="bar-outer armor-outer"><div id="armor-fill" class="bar-inner armor-inner"></div></div>
+    </div>
+    <div class="vital-row">
+      <span class="vital-label">HEALTH</span>
+      <div class="bar-outer health-outer"><div id="health-fill" class="bar-inner health-inner"></div></div>
+      <span class="vital-num" id="health-num">100</span>
+    </div>
+    <div class="vital-row">
+      <span class="vital-label">STAMINA</span>
+      <div class="bar-outer stamina-outer"><div id="stamina-fill" class="bar-inner stamina-inner"></div></div>
+    </div>
+  </div>
+
+  <!-- Bottom right: weapon / ammo -->
+  <div id="hud-weapon">
+    <div id="weapon-name">VX-4</div>
+    <div id="ammo-row">
+      <span id="ammo-mag">30</span><span class="ammo-sep">/</span><span id="ammo-reserve">180</span><span id="ammo-total">Σ 210</span>
+    </div>
+    <div id="weapon-state"></div>
+    <div id="frag-count">FRAG ×2</div>
+    <div id="throw-row" class="hidden"><span id="throw-name">FRAG</span> ×<span id="throw-count">0</span></div>
+  </div>
+
+  <!-- Vehicle HUD (visible while driving) -->
+  <div id="veh-hud" class="hidden">
+    <div id="veh-name">—</div>
+    <div id="veh-speed"><span id="veh-kmh">0</span> <i>KM/H</i> <b id="veh-gear">N</b></div>
+    <div class="vital-row"><span class="vital-label">INTEGRITY</span>
+      <div class="bar-outer"><div id="veh-dmg-fill" class="bar-inner veh-inner"></div></div>
+    </div>
+    <div id="veh-hint">F — EXIT · C — CAMERA · SPACE — HANDBRAKE</div>
+  </div>
+
+  <!-- Equipment wheel (hold Q) -->
+  <canvas id="eq-wheel" class="hidden" width="360" height="360"></canvas>
+
+  <!-- Interaction prompt -->
+  <!-- Radio chatter + suppression -->
+  <div id="radio-line"></div>
+  <div id="suppress-hint">SUPPRESSED — KEEP YOUR HEAD DOWN</div>
+
+  <!-- Bandage hold progress -->
+  <div id="bandage-bar" class="hidden"><div id="bandage-fill"></div><span>HOLD H — APPLYING DRESSING</span></div>
+
+  <!-- Tactical map overlay (M) -->
+  <div id="tacmap" class="hidden">
+    <div id="tacmap-frame">
+      <div id="tacmap-topbar">
+        <div id="tacmap-title">TACTICAL MAP</div>
+        <div id="tacmap-controls">
+          <button id="tac-zoomout" class="tac-btn" title="Zoom out (wheel down)">−</button>
+          <span id="tac-zoomval" class="tac-val">1.0×</span>
+          <button id="tac-zoomin" class="tac-btn" title="Zoom in (wheel up)">+</button>
+          <button id="tac-rotbtn" class="tac-btn wide">ROT: PLAYER-UP</button>
+          <button id="tac-routebtn" class="tac-btn wide">ROUTE: PRIMARY</button>
+          <button id="tac-close" class="tac-btn">CLOSE ✕</button>
+        </div>
+      </div>
+      <canvas id="tacmap-canvas" width="560" height="560"></canvas>
+      <div id="tacmap-legend">M / ESC — CLOSE · WHEEL — ZOOM · TERRAIN GREY · DOORS <b class="c-door">CYAN</b> · ITEMS <b class="c-item">YELLOW</b> · OBJECTIVE <b class="c-obj">GREEN ◆</b> · OPTIONAL <b class="c-opt">AMBER ◇</b> · EXTRACTION <b class="c-obj">RING</b> · KNOWN HOSTILES <b class="c-foe">RED ●</b> · FRIENDLIES <b class="c-friend">BLUE ●</b> · VEHICLES <b class="c-veh">▭</b> · DARK = UNEXPLORED</div>
+    </div>
+  </div>
+
+  <div id="interact-prompt" class="hidden"><span class="key-cap">F</span> <span id="interact-text">INTERACT</span></div>
+  <div id="hack-progress" class="hidden"><div id="hack-fill"></div><span id="hack-label">DOWNLOADING…</span></div>
+
+  <!-- Objective toast -->
+  <div id="objective-toast" class="hidden">
+    <div id="toast-label">OBJECTIVE COMPLETE</div>
+    <div id="toast-text"></div>
+  </div>
+
+  <div id="fps-counter" class="hidden">-- FPS</div>
+  <div id="stance-indicator"></div>
+
+  <!-- subtitles: comms / radio / objective voice lines -->
+  <div id="subtitle-line" class="hidden"><span id="subtitle-tag">[COMMS]</span> <span id="subtitle-text"></span></div>
+</div>
+
+<!-- ============ TOUCH CONTROLS (built by js/touch.js; desktop hides) ============ -->
+<div id="touch-controls" class="hidden"></div>
+
+<!-- ============ MOBILE BOTTOM NAV (menu-side screens, touch devices) ============ -->
+<nav id="mobnav" class="hidden">
+  <button id="mn-home" class="mn-btn">HOME</button>
+  <button id="mn-missions" class="mn-btn">MISSIONS</button>
+  <button id="mn-loadout" class="mn-btn">LOADOUT</button>
+  <button id="mn-intel" class="mn-btn">INTEL</button>
+  <button id="mn-settings" class="mn-btn">SETTINGS</button>
+</nav>
+
+<!-- ============ PERFORMANCE SUGGESTION (non-blocking, mobile) ============ -->
+<div id="perf-suggest" class="hidden">
+  <div class="perf-card">
+    <div class="perf-title">PERFORMANCE MODE RECOMMENDED</div>
+    <div class="perf-sub">This device may run better with reduced shadows, particles and draw distance.</div>
+    <div class="perf-buttons">
+      <button id="btn-perf-apply" class="menu-btn">APPLY</button>
+      <button id="btn-perf-dismiss" class="menu-btn">NOT NOW</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
