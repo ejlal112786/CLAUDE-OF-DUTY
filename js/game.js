@@ -266,8 +266,12 @@ export class Game {
     if (!this.renderer) return;
     const q = s.perfMode ? 'low' : s.quality;
 
-    // resolution
-    const prCap = q === 'high' ? 2 : q === 'medium' ? 1.5 : 1;
+    // resolution — a handheld GPU pushes far fewer pixels per frame than a
+    // desktop one, so cap the device pixel ratio harder on phones/tablets.
+    // Desktop tiers keep their existing caps.
+    const handheld = !!(this.device && (this.device.isPhone || this.device.isTablet));
+    const prCap = q === 'high' ? (handheld ? 1.5 : 2)
+                : q === 'medium' ? (handheld ? 1.25 : 1.5) : 1;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, prCap));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
 
@@ -285,7 +289,8 @@ export class Game {
         const isMoon = l.isDirectionalLight;
         const wantShadow = isMoon ? true : q === 'high' || q === 'medium';
         if (l.castShadow !== wantShadow) l.castShadow = wantShadow;
-        const size = isMoon ? (q === 'high' ? 2048 : q === 'medium' ? 1536 : 1024) : (q === 'high' ? 1024 : 512);
+        let size = isMoon ? (q === 'high' ? 2048 : q === 'medium' ? 1536 : 1024) : (q === 'high' ? 1024 : 512);
+        if (handheld) size = Math.min(size, 1024);   // handheld shadow budget
         if (l.shadow.mapSize.x !== size) {
           l.shadow.mapSize.set(size, size);
           if (l.shadow.map) { l.shadow.map.dispose(); l.shadow.map = null; }
