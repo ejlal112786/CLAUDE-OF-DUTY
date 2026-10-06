@@ -60,6 +60,12 @@ js/loadout.js              pre-mission loadout configuration + validity rules
 js/progress.js             XP, ranks, medals, mission records, stats (localStorage)
 js/ui.js                   HUD + menus: compass, toasts, hitmarkers, equipment
                            wheel, loadout panel, debrief, damage direction
+js/touch.js                Stage D touch layer: virtual joysticks, action buttons,
+                           contextual interact, weapon-pickup card, haptics, aim assist
+js/pwa.js                  PWA: service-worker registration + safe update banner
+manifest.webmanifest       PWA manifest (standalone, landscape, maskable icons)
+sw.js                      service worker: versioned offline cache for the whole game
+assets/icons/              PWA icons (192/512 any + maskable, apple-touch, favicon)
 ```
 
 ---
@@ -485,12 +491,29 @@ commands.
 - Strict slots: one PRIMARY + one SECONDARY. Swapping **drops the displaced
   weapon** from the owned set — no unlimited arsenal.
 
-### Unified input (`js/input.js` + `js/touch.js`)
-TouchControls writes into the same `input` state object the keyboard/mouse use
-(moveF/moveR/lookX/lookY/fire/aim/sprint/crouch/interact/wheel…), so gameplay
-code is identical on every device. Desktop keeps pointer lock; touch never
-requires it. Touch claims (e.g. sprint) only write while active, never fight
-the keyboard.
+### Unified input (`js/game.js` + `js/touch.js`)
+
+> **Note:** older drafts of this document referred to a `js/input.js` module.
+> No such module exists and none is planned — that reference was stale. The real
+> input architecture is the one described below, and the two files that own it
+> are `js/game.js` and `js/touch.js`.
+
+There is exactly **one** gameplay command object, `Game#input`, and exactly one
+place that owns it:
+
+- **`js/game.js`** — `_bindInput()` registers the desktop keyboard/mouse/pointer-lock
+  listeners; `_pollInput()` folds the raw key flags (`_w`/`_a`/`_s`/`_d`) and the
+  touch joystick axes (`_touchF`/`_touchR`) into the shared `moveF`/`moveR`
+  commands once per frame; `_loop()` consumes edge-triggered commands
+  (`reloadPressed`, `interactPressed`, …).
+- **`js/touch.js`** — `TouchControls` builds the on-screen controls and writes
+  into that *same* object (moveF/moveR/lookX/lookY/mouse0/mouse2/sprint/crouch/
+  interact/wheel/…), so gameplay code is identical on every device.
+
+Desktop keeps pointer lock; touch never requires it. Touch claims (e.g. sprint)
+only write while active and never fight the keyboard, and `_resetInputs()` clears
+every touch-owned flag when the layer is hidden, on resize, or on orientation
+change. Do not add a second/parallel input system.
 
 ### Responsive tactical map (gestures)
 - Phone/tablet: near-fullscreen map canvas. PINCH zoom, TWO-FINGER pan, TAP a
@@ -540,6 +563,105 @@ errors), `mission2` 12 (briefing content, objective HUD, toast sequence,
 panels, categories, subtitles, fullscreen fallback, perf suggestion, resize
 state-keeping, debrief), `regress2` 9 (desktop keyboard/mouse parity, nine maps
 build clean, convoy E2E, checkpoint restart, white mode, save persistence).
+
+---
+
+## 5e. PWA — offline single-player support
+
+The game installs as a standalone app and runs with **no network at all** after
+the first visit. There is no backend, no account system and no external API.
+
+| File | Role |
+|---|---|
+| `manifest.webmanifest` | name/short_name, `display: standalone`, `orientation: landscape`, theme/background `#07090b`, four icons (`any` 192/512 + `maskable` 192/512) |
+| `sw.js` | versioned offline cache, install/activate/fetch lifecycle |
+| `js/pwa.js` | registration + safe update banner |
+| `assets/icons/*.png` | 192/512 `any`, 192/512 `maskable` (art kept inside the maskable safe zone), apple-touch-icon, 32×32 favicon |
+
+### Caching rules (`sw.js`)
+
+- **Cache name is explicitly versioned** — `obv-<CACHE_VERSION>` (see the
+  `CACHE_VERSION` constant at the top of `sw.js`). Bump it to ship a new
+  offline snapshot.
+- **Install** precaches the complete app: `index.html`, `style.css`, the
+  manifest, all 18 JS modules, the vendored Three.js and all icons.
+- **Activate** deletes every obsolete `obv-*` cache and claims clients, then
+  refreshes the shell.
+- **Navigations** are network-first with an offline fallback to the cached
+  `index.html` — online visitors always get fresh HTML, offline visitors still boot.
+- **Static assets** are cache-first (stale-while-revalidate). A resource that
+  is already cached is *never* broken by a failed network request.
+- **Scope guard:** only same-origin, HTTP(S), `GET` requests are intercepted.
+  Vercel platform routes (`/_vercel`, `/api/`, `/__*`) and `/.well-known/` are
+  never touched, so normal online deployment behaves exactly as before.
+- Nothing sensitive is cached because the project has no secrets.
+
+### Update behaviour
+
+`js/pwa.js` registers the worker and watches for new versions. When one is found
+it **does not reload behind the player's back** — an in-progress mission must
+never be torn down. Instead a small `UPDATE READY` banner appears with **RELOAD**
+and **LATER**. Choosing RELOAD posts `SKIP_WAITING` and reloads once the new
+worker takes control.
+
+`vercel.json` serves `sw.js` and the manifest with `max-age=0, must-revalidate`
+so updates propagate immediately, while `/assets/vendor/*` (Three.js r160)
+stays immutable.
+
+---
+
+## 5f. Verification status — what is actually reproducible
+
+This section exists so that no result is overstated. The historical numbers in
+sections 5b/5c/5d were produced by **Arena-side harnesses that are not part of
+this repository**. They are recorded as history, not as something you can run.
+
+| Category | What it means | Status in this repo |
+|---|---|---|
+| **HISTORICAL** | Recorded in this README from the original Arena verification runs. No test code, no runner and no dependencies ship with the project, so these **cannot be re-run**. | Stage B 40/40; full journey 85/85; Stage D 52 checks (`resp1` 13, `touch1` 18, `mission2` 12, `regress2` 9) |
+| **EXECUTABLE** | Checks run against the app in a real (headless) browser during this task | See below |
+| **MANUAL** | Requires a human (visual fidelity, audio, real-device touch feel, controller/gamepad) | Not automated |
+| **UNAVAILABLE** | The historical puppeteer suites themselves — **not in this repository**. No `package.json`, no test directory, no runner. | Cannot be executed |
+
+### Executable baseline check (this task)
+
+Run in headless Chromium with WebGL2 (software rasterisation), driving the real
+build over HTTP. **49 of 50 checks pass.** The harness waits on *game time*
+rather than wall time, because the software renderer runs at a few FPS and the
+loop clamps `dt` to 0.05 s.
+
+Verified: boot to menu with zero page/console/network errors; all 15 subsystems
+constructed; all 7 menu screens; campaign → briefing → gameplay; enemies (7),
+colliders (291), vehicles (1) built; FIRE hold (magazine + shot counter); ADS
+engage/release; RELOAD start + refill; forward movement; pause/resume; death,
+complete and failed states; `localStorage` progression (`obv_progress_v1`,
+`obv_settings_v1`); Training (`range`); touch controls wired and writing into the
+shared command object; tactical map open/zoom/close; vehicle board/exit; full
+subsystem connectivity.
+
+### Known pre-existing defect (not introduced here, not fixed here)
+
+**Crouch stand-up is blocked on maps that contain an overhead "big" collider**
+(e.g. KESTREL YARD / `facility`). Root cause: `physics.queryAABB()` returns
+*every* collider in `physics.bigColliders` **without performing any AABB test**,
+while grid colliders are correctly filtered:
+
+```js
+for (const c of this.bigColliders) {
+  if (c.enabled && !seen.has(c.id)) { seen.add(c.id); out.push(c); }   // no bounds test
+}
+```
+
+`Player#update` uses that result as a stand-up headroom check
+(`c.max.y > pos.y + BOX_H_CROUCH + 0.05`), so a rooftop collider at y≈10 m counts
+as "no headroom" and the operator can never stand back up. Confirmed
+experimentally: on `facility` (roof collider present) stand-up stays blocked;
+on `range` (ground collider only) stand-up works normally.
+
+Deliberately **not** changed here: adding a bounds test to that loop would alter
+the result of every `queryAABB` consumer (AI cover search, interaction queries,
+explosion queries), which is out of scope for a PWA/offline task and risks
+regressing the verified baseline. It needs its own focused change and test pass.
 
 ---
 
