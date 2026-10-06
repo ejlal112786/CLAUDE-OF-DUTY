@@ -19,6 +19,7 @@ import { VehicleManager } from './vehicles.js';
 import { ThrowableSystem, THROWABLE_DEFS } from './throwables.js';
 import { Loadout } from './loadout.js';
 import { Progress, MISSION_ORDER } from './progress.js';
+import { PlayerBody } from './playerbody.js';
 
 const SETTINGS_KEY = 'obv_settings_v1';
 
@@ -194,6 +195,11 @@ export class Game {
     this.particles = new Particles(this.scene);
     this.world = new GameWorld();
     this.player = new Player(this);
+    // Visible operator body (shared by first-person awareness and any
+    // third-person camera) — one representation, never two.
+    this.body = new PlayerBody(this);
+    this.body.build();
+    this.scene.add(this.body.root);
     this.weapons = new WeaponSystem(this);
     this.weapons.attachTo(this.camera);
     this.enemies = new EnemyManager(this);
@@ -286,6 +292,11 @@ export class Game {
       }
     }
 
+    // player body shadows follow the same quality ladder as the world
+    if (this.body && this.body.built) {
+      this.body.setShadows(q === 'high' || q === 'medium');
+    }
+
     // white mode (daylight relight)
     if (this.world && this.world.scene) this.world.setLightingMode(s.dayMode ? 'day' : 'night');
     document.body.classList.toggle('daymode', !!s.dayMode);
@@ -298,6 +309,7 @@ export class Game {
     rootStyle.setProperty('--joy-op', String(s.joyOpacity != null ? s.joyOpacity : 0.55));
     rootStyle.setProperty('--btn-op', String(s.btnOpacity != null ? s.btnOpacity : 0.8));
     rootStyle.setProperty('--hud-scale', String(s.hudScale != null ? s.hudScale : 1));
+    rootStyle.setProperty('--look-scale', String(s.lookStickSize != null ? s.lookStickSize : 1));
     if (this.touch) this.touch.applySettings();
 
     // particles
@@ -820,6 +832,11 @@ export class Game {
     this.wheelActive = false;
     this.ui.hideEqWheel();
     this.player.reset(this.world.spawnPoint, this.world.spawnYaw);
+    if (this.body && this.body.built) {
+      this.body.setVisible(true);
+      this.body.setThirdPerson(false);
+      this.body.snug();          // avoid a one-frame lerp from the previous spawn
+    }
     const diff = this.progress.difficulty;
     this.player.armor = diff.armor;
     this.player.bandageCdRate = diff.bandageCd;
@@ -1191,6 +1208,9 @@ export class Game {
     this.stats.usedVehicle = true;
     this.stats.equipCats.vehicle = true;
     this.weapons.rig.visible = false;
+    // chase camera by default: the same operator rig is shown in third person
+    this.body.setThirdPerson(!v.firstPerson);
+    this.body.setVisible(!v.firstPerson);
     this.ui.showVehicleHUD(v);
     this.ui.toast('VEHICLE ACQUIRED', v.def.name + ' — W/S throttle · A/D steer · SPACE handbrake · SHIFT boost · C camera · F exit');
     if (this.audio.ready && this.audio.engineUpdate) this.audio.engineUpdate(0, true, 1, null);
@@ -1231,6 +1251,8 @@ export class Game {
     this.player.vel.set(0, 0, 0);
     this.player.yaw = v.heading;
     this.weapons.rig.visible = true;
+    this.body.setThirdPerson(false);
+    this.body.setVisible(true);
     this.ui.hideVehicleHUD();
     if (this.audio.ready && this.audio.engineStop) this.audio.engineStop();
     if (forced) this.ui.toast('VEHICLE LOST', 'CONTINUE ON FOOT');
@@ -1242,6 +1264,7 @@ export class Game {
     if (this.vehicleMode.driver === 'player') this.vehicleMode.driver = null;
     this.vehicleMode = null;
     this.weapons.rig.visible = true;
+    this.body.setThirdPerson(false);
     this.ui.hideVehicleHUD();
     if (this.audio.ready && this.audio.engineStop) this.audio.engineStop();
   }
@@ -1354,7 +1377,12 @@ export class Game {
       if (this.vehicleMode) {
         // edge inputs only — simulation happens in vehicles.update() below
         const v = this.vehicleMode;
-        if (inp.camPressed) { inp.camPressed = false; v.firstPerson = !v.firstPerson; this.ui.toastBrief(v.firstPerson ? 'DRIVER CAMERA' : 'CHASE CAMERA'); }
+        if (inp.camPressed) {
+          inp.camPressed = false; v.firstPerson = !v.firstPerson;
+          this.ui.toastBrief(v.firstPerson ? 'DRIVER CAMERA' : 'CHASE CAMERA');
+          this.body.setThirdPerson(!v.firstPerson);
+          this.body.setVisible(!v.firstPerson);
+        }
         if (inp.interactPressed) { inp.interactPressed = false; this.exitVehicle(); }
       } else {
         this.player.update(dt, inp);
@@ -1458,6 +1486,13 @@ export class Game {
       this.ui.setPinned(this.suppress > 0.5);
       this.particles.update(dt, this);
 
+      // visible operator body: the same rig in first and third person
+      if (this.body && this.body.built) {
+        const bodyOn = !(this.vehicleMode && this.vehicleMode.firstPerson);
+        if (this._bodyOn !== bodyOn) { this._bodyOn = bodyOn; this.body.setVisible(bodyOn); }
+        if (bodyOn) this.body.update(dt, this.player);
+      }
+
       // audio listener + zone
       this._zoneT -= dt;
       if (this._zoneT <= 0) {
@@ -1475,6 +1510,8 @@ export class Game {
         this.particles.update(dt, this);
         this.world.update(dt, this);
         this.enemies.update(dt);
+        // the death camera sinks to the ground — hide the rig so it cannot clip
+        if (this.body && this.body.built) this.body.setVisible(false);
       }
       this.renderer.render(this.scene, this.camera);
     } else if (st === GameState.LOADING) {

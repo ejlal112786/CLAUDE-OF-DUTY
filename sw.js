@@ -17,7 +17,7 @@
  *    when the player chooses to, so a mission is never interrupted.
  * ==========================================================================*/
 
-const CACHE_VERSION = 'v1.0.0';
+const CACHE_VERSION = 'v1.1.0';
 const CACHE_NAME = `obv-${CACHE_VERSION}`;
 const SHELL = './index.html';
 
@@ -31,6 +31,7 @@ const PRECACHE = [
   './js/pwa.js',
   './js/game.js',
   './js/player.js',
+  './js/playerbody.js',
   './js/weapons.js',
   './js/enemies.js',
   './js/physics.js',
