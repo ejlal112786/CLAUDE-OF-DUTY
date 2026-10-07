@@ -112,8 +112,18 @@ export class PhysicsWorld {
     out.length = 0;
     const seen = this._seen || (this._seen = new Set());
     seen.clear();
+    // Very large colliders (ground slabs, long walls) bypass the spatial grid,
+    // so they are always CONSIDERED here - but they still have to pass the same
+    // overlap test as grid colliders. Returning them unconditionally meant a
+    // big collider anywhere in the world registered as a hit for every query,
+    // so e.g. a roof slab at y=10 blocked the player from standing up at y=1.8.
     for (const c of this.bigColliders) {
-      if (c.enabled && !seen.has(c.id)) { seen.add(c.id); out.push(c); }
+      if (!c.enabled || seen.has(c.id)) continue;
+      if (c.max.x < min.x || c.min.x > max.x) continue;
+      if (c.max.z < min.z || c.min.z > max.z) continue;
+      if (c.max.y < min.y || c.min.y > max.y) continue;
+      seen.add(c.id);
+      out.push(c);
     }
     const cx0 = Math.floor(min.x / CELL), cx1 = Math.floor(max.x / CELL);
     const cz0 = Math.floor(min.z / CELL), cz1 = Math.floor(max.z / CELL);
