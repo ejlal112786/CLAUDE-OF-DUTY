@@ -15,6 +15,11 @@ import * as THREE from 'three';
 
 const MAX_VOICES = 28;
 
+// Scratch vector reused by update(), which runs every frame. Allocating a
+// Vector3 per frame here was the only per-frame allocation left in the hot
+// path; it is only read synchronously below, so reuse is safe.
+const _listenerFwd = new THREE.Vector3();
+
 export class AudioSystem {
   constructor() {
     this.ctx = null;
@@ -705,7 +710,7 @@ export class AudioSystem {
     this._updateWind(now / 1000);
     if (!this.ready) return;
     const l = this.ctx.listener;
-    const fwd = new THREE.Vector3();
+    const fwd = _listenerFwd;
     camera.getWorldDirection(fwd);
     if (l.positionX) {
       l.positionX.value = camera.position.x;

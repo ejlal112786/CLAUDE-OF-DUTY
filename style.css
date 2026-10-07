@@ -751,6 +751,429 @@ body.daymode #hud #interact-prompt { text-shadow: 0 1px 0 rgba(255, 255, 255, 0.
 #alert-chip.searching, #alert-chip.recovering { color: #b0a878; }
 
 /* =========================================================
+   UI SYSTEM
+   One visual language for every screen — not "every rectangle rounded".
+   Layered translucent cards, hairline borders, rounded corners, a single
+   restrained accent used as a rail/underline rather than a flood fill, and a
+   clear typographic hierarchy (title > heading > body > micro-label).
+   Motion is opt-out via body.reduce-motion and prefers-reduced-motion.
+   ========================================================= */
+:root {
+  --ui-card:    linear-gradient(180deg, rgba(18, 25, 22, 0.72) 0%, rgba(9, 13, 12, 0.62) 100%);
+  --ui-card-hi: linear-gradient(180deg, rgba(31, 41, 36, 0.82) 0%, rgba(14, 20, 17, 0.70) 100%);
+  --ui-line:     rgba(207, 227, 216, 0.16);
+  --ui-line-hi:  rgba(217, 164, 65, 0.55);
+  --ui-r:    12px;
+  --ui-r-sm: 8px;
+  --ui-lift:  0 10px 34px rgba(0, 0, 0, 0.45);
+  --ui-inset: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+/* ------------------------------------------------------- screen backdrop -- */
+.screen {
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(28, 38, 46, 0.55), rgba(4, 6, 8, 0.97) 72%),
+    var(--bg);
+}
+
+/* --------------------------------------------------------------- panels -- */
+.panel {
+  background: var(--ui-card);
+  border: 1px solid var(--ui-line);
+  border-top: 2px solid var(--accent);
+  border-radius: var(--ui-r);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: var(--ui-lift), var(--ui-inset);
+}
+
+/* typographic hierarchy: the panel title is a ruled section head, not just
+   a bigger font */
+.panel-title {
+  font-size: clamp(15px, 2.2vh, 20px);
+  letter-spacing: 5px;
+  padding-bottom: 11px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--ui-line);
+  position: relative;
+}
+.panel-title::after {
+  content: ""; position: absolute; left: 0; bottom: -1px;
+  width: 44px; height: 2px; background: var(--accent);
+}
+
+/* -------------------------------------------------------------- buttons -- */
+.menu-btn {
+  position: relative;
+  overflow: hidden;
+  font-size: 14px;
+  letter-spacing: 3.5px;
+  padding: 12px 18px;
+  color: var(--hud-color);
+  background: var(--ui-card);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-r-sm);
+  box-shadow: var(--ui-inset);
+  cursor: pointer;
+  transition: background .14s ease, border-color .14s ease, color .14s ease,
+              transform .08s ease, box-shadow .14s ease;
+}
+/* an accent rail grows on hover — restrained, not a flood fill */
+.menu-btn::before {
+  content: "";
+  position: absolute; left: 0; top: 14%; bottom: 14%;
+  width: 2px; background: var(--accent);
+  transform: scaleY(0); transform-origin: center;
+  transition: transform .16s ease;
+}
+.menu-btn:hover, .menu-btn:focus-visible {
+  background: var(--ui-card-hi);
+  border-color: var(--ui-line-hi);
+  color: #fff;
+  outline: none;
+}
+.menu-btn:hover::before, .menu-btn:focus-visible::before { transform: scaleY(1); }
+.menu-btn:focus-visible { box-shadow: var(--ui-inset), 0 0 0 2px rgba(217, 164, 65, 0.35); }
+.menu-btn:active { transform: translateY(1px); }
+
+/* -------------------------------------------------------- mission cards -- */
+.mission-card {
+  border-radius: var(--ui-r);
+  background: var(--ui-card);
+  border: 1px solid var(--ui-line);
+  box-shadow: var(--ui-inset);
+  transition: border-color .15s ease, background .15s ease,
+              transform .15s ease, box-shadow .15s ease;
+}
+.mission-card:hover, .mission-card:focus-visible {
+  border-color: var(--ui-line-hi);
+  background: var(--ui-card-hi);
+  transform: translateY(-2px);
+  box-shadow: var(--ui-inset), 0 12px 28px rgba(0, 0, 0, 0.45);
+  outline: none;
+}
+.mission-card:active { transform: translateY(0); }
+.mission-card.selected, .mission-card[aria-selected="true"] {
+  border-color: var(--ui-line-hi);
+  background: var(--ui-card-hi);
+}
+.mc-title { font-size: clamp(16px, 2.1vh, 19px); letter-spacing: 0.12em; }
+
+/* ------------------------------------------------------------- settings -- */
+.setting-row {
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  border-radius: var(--ui-r-sm);
+  background: rgba(207, 227, 216, 0.03);
+  border: 1px solid transparent;
+  transition: background .14s ease, border-color .14s ease;
+}
+.setting-row:hover { background: rgba(207, 227, 216, 0.06); border-color: var(--ui-line); }
+.set-sec {
+  border-top-color: var(--ui-line);
+  padding-top: 14px;
+  margin: 24px 0 12px;
+}
+
+/* --------------------------------------------------------------- inputs -- */
+input[type="range"] {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(207, 227, 216, 0.22);
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid rgba(10, 14, 12, 0.9);
+  box-shadow: 0 0 8px rgba(217, 164, 65, 0.40);
+  cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid rgba(10, 14, 12, 0.9);
+  cursor: pointer;
+}
+input[type="range"]:focus-visible { outline: 2px solid rgba(217, 164, 65, 0.35); outline-offset: 4px; }
+
+select {
+  border-radius: var(--ui-r-sm);
+  background: var(--ui-card-hi);
+  border: 1px solid var(--ui-line);
+  padding: 7px 9px;
+  transition: border-color .14s ease, background .14s ease;
+}
+select:hover, select:focus { border-color: var(--ui-line-hi); outline: none; }
+input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+
+/* --------------------------------------------------- mobile bottom nav --- */
+#mobnav {
+  background: rgba(6, 9, 12, 0.90);
+  border-top: 1px solid var(--ui-line);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.mn-btn {
+  border-radius: var(--ui-r-sm);
+  border: 1px solid var(--ui-line);
+  background: var(--ui-card);
+  transition: color .14s ease, border-color .14s ease, background .14s ease;
+}
+.mn-btn:active { transform: translateY(1px); }
+.mn-btn.on {
+  color: var(--accent);
+  border-color: var(--ui-line-hi);
+  background: rgba(217, 164, 65, 0.12);
+}
+
+/* --------------------------------------------- tactical map + objective -- */
+#tacmap-frame {
+  border-radius: var(--ui-r);
+  border: 1px solid var(--ui-line);
+  box-shadow: var(--ui-lift), var(--ui-inset);
+}
+.tac-btn {
+  border-radius: var(--ui-r-sm);
+  background: var(--ui-card);
+  border: 1px solid var(--ui-line);
+  transition: border-color .14s ease, color .14s ease, background .14s ease;
+}
+.tac-btn:hover { border-color: var(--ui-line-hi); color: var(--accent); background: var(--ui-card-hi); }
+.tac-btn:active { transform: translateY(1px); }
+
+.obj-row {
+  border-radius: var(--ui-r-sm);
+  background: var(--ui-card);
+  border: 1px solid var(--ui-line);
+}
+
+/* -------------------------------------------------------------- motion --- */
+.screen:not(.hidden) { animation: ui-fade .22s ease-out both; }
+.screen:not(.hidden) > .panel,
+.screen:not(.hidden) > .menu-wrap { animation: ui-rise .26s cubic-bezier(.2, .7, .3, 1) both; }
+
+@keyframes ui-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ui-rise {
+  from { opacity: 0; transform: translateY(10px) scale(0.995); }
+  to   { opacity: 1; transform: none; }
+}
+
+body.reduce-motion .screen:not(.hidden),
+body.reduce-motion .screen:not(.hidden) > .panel,
+body.reduce-motion .screen:not(.hidden) > .menu-wrap,
+body.reduce-motion .menu-btn,
+body.reduce-motion .mission-card { animation: none; transition: none; }
+body.reduce-motion .panel, body.reduce-motion #mobnav,
+body.reduce-motion #hud-objective, body.reduce-motion #hud-vitals,
+body.reduce-motion #hud-weapon, body.reduce-motion #veh-hud { backdrop-filter: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .screen:not(.hidden),
+  .screen:not(.hidden) > .panel,
+  .screen:not(.hidden) > .menu-wrap { animation: none; }
+  .menu-btn, .mission-card { transition: none; }
+}
+
+
+/* =========================================================
+   HUD SYSTEM
+   Layered translucent modules, hairline borders, rounded corners, restrained
+   accent lighting, compact typography. No flat opaque rectangles.
+
+   Scaling: each module scales from its own anchor via the independent `scale`
+   property, so the user's HUD scale can never push a module off-screen (a
+   plain `zoom` on #hud used to do exactly that at larger settings).
+   ========================================================= */
+:root {
+  /* The one scaled unit for touch layout. Declared at :root (not on
+     #touch-controls) so the HUD band can line itself up with the thumb
+     clusters, which scale by the same factor. */
+  --tc-u: calc(var(--touch-scale) * var(--tc-boost, 1));
+  --hud-glass: linear-gradient(180deg, rgba(14, 20, 18, 0.50) 0%, rgba(6, 10, 9, 0.38) 100%);
+  --hud-glass-strong: linear-gradient(180deg, rgba(16, 22, 20, 0.74) 0%, rgba(6, 10, 9, 0.62) 100%);
+  --hud-line: rgba(207, 227, 216, 0.14);
+  --hud-line-strong: rgba(217, 164, 65, 0.42);
+  --hud-r-sm: 6px;
+  --hud-r-md: 10px;
+  --hud-r-lg: 14px;
+  --hud-blur: blur(7px);
+  --hud-lift: inset 0 1px 0 rgba(255,255,255,0.05), 0 6px 20px rgba(0,0,0,0.32);
+}
+
+/* --- shared module chrome --- */
+#hud-objective, #hud-vitals, #hud-weapon, #veh-hud {
+  background: var(--hud-glass);
+  border: 1px solid var(--hud-line);
+  border-radius: var(--hud-r-md);
+  backdrop-filter: var(--hud-blur);
+  -webkit-backdrop-filter: var(--hud-blur);
+  box-shadow: var(--hud-lift);
+}
+body.reduce-motion #hud-objective, body.reduce-motion #hud-vitals,
+body.reduce-motion #hud-weapon, body.reduce-motion #veh-hud { backdrop-filter: none; }
+
+/* --- per-module scaling anchor (never drifts off-screen) --- */
+#hud-vitals        { transform-origin: left bottom;  scale: var(--hud-scale, 1); }
+#hud-weapon        { transform-origin: right bottom; scale: var(--hud-scale, 1); }
+#hud-objective     { transform-origin: left top;     scale: var(--hud-scale, 1); }
+#veh-hud           { transform-origin: left bottom;  scale: var(--hud-scale, 1); }
+#minimap           { transform-origin: top right;    scale: var(--hud-scale, 1); }
+#hud-mapbtn        { transform-origin: top right;    scale: var(--hud-scale, 1); }
+#alert-chip        { transform-origin: center top;   scale: var(--hud-scale, 1); }
+/* The compass wrapper is full-bleed, so it must NOT be scaled (that would push
+   it past the viewport). Scale the bounded tape inside it instead. */
+#compass-wrap > #compass { transform-origin: center top; scale: var(--hud-scale, 1); }
+#hud > #compass          { transform-origin: center top; scale: var(--hud-scale, 1); }
+#stance-indicator  { transform-origin: right bottom; scale: var(--hud-scale, 1); }
+
+/* --- compass: centred without translateX so `scale` keeps it centred --- */
+#compass-wrap {
+  top: calc(8px + var(--sat));
+  left: 0; right: 0;
+  display: flex; justify-content: center;
+  transform: none;          /* drop the old translateX(-50%): it fought `scale` */
+}
+/* the tick strip: centred with auto margins so `scale` keeps it centred */
+#hud > #compass {
+  top: calc(14px + var(--sat));
+  left: 0; right: 0;
+  margin-inline: auto;
+  transform: none;
+}
+#compass {
+  border-radius: var(--hud-r-sm);
+  border-color: var(--hud-line);
+  background: linear-gradient(180deg, rgba(8,12,11,0.46) 0%, rgba(8,12,11,0.14) 100%);
+  box-shadow: var(--hud-lift);
+  backdrop-filter: var(--hud-blur);
+  -webkit-backdrop-filter: var(--hud-blur);
+}
+#compass-marker { background: var(--accent); box-shadow: 0 0 6px rgba(217,164,65,0.6); }
+
+/* --- alert chip: centred pill --- */
+#alert-chip {
+  top: calc(48px + var(--sat));
+  left: 0; right: 0;
+  margin-inline: auto;
+  width: max-content;
+  border-radius: 999px;
+  background: var(--hud-glass-strong);
+  border-color: var(--hud-line);
+  backdrop-filter: var(--hud-blur);
+  -webkit-backdrop-filter: var(--hud-blur);
+  transform: none;
+}
+
+/* --- objective: left accent rule, not a box --- */
+#hud-objective {
+  top: calc(52px + var(--sat));
+  left: calc(14px + var(--sal));
+  max-width: min(340px, 46vw);
+  padding: 8px 13px;
+  border-left: 2px solid var(--hud-line-strong);
+  border-radius: 0 var(--hud-r-sm) var(--hud-r-sm) 0;
+}
+#obj-text { font-size: clamp(11px, 1.5vw, 13px); }
+
+/* --- vitals --- */
+#hud-vitals {
+  bottom: calc(22px + var(--sab));
+  left: calc(22px + var(--sal));
+  width: clamp(196px, 23vw, 252px);
+  padding: 10px 13px;
+  opacity: 0.96;
+}
+.bar-outer { height: 6px; border-radius: 3px; overflow: hidden; background: rgba(207,227,216,0.10); }
+.bar-inner { border-radius: 3px; }
+.stamina-outer { height: 3px; }
+.vital-num { font-variant-numeric: tabular-nums; }
+
+/* --- weapon / ammo --- */
+#hud-weapon {
+  bottom: calc(22px + var(--sab));
+  right: calc(24px + var(--sar));
+  padding: 10px 15px;
+  opacity: 0.96;
+}
+#ammo-row { font-size: clamp(18px, 2.4vw, 22px); font-variant-numeric: tabular-nums; }
+
+/* --- minimap --- */
+#minimap {
+  border: 1px solid var(--hud-line);
+  box-shadow: 0 6px 22px rgba(0,0,0,0.42), inset 0 0 0 1px rgba(255,255,255,0.04);
+}
+#hud-mapbtn {
+  border-radius: var(--hud-r-sm);
+  background: var(--hud-glass-strong);
+  border: 1px solid var(--hud-line);
+  backdrop-filter: var(--hud-blur);
+  -webkit-backdrop-filter: var(--hud-blur);
+  transition: border-color .14s ease, color .14s ease;
+}
+#hud-mapbtn:hover { border-color: var(--hud-line-strong); color: var(--accent); }
+#hud-mapbtn:active { transform: scale(0.96); }
+
+/* --- vehicle HUD --- */
+#veh-hud { border-radius: var(--hud-r-md); }
+
+/* --- bottom band ---------------------------------------------------------
+   Desktop/mouse: `display: contents` keeps the two modules exactly where they
+   always were, so nothing about the desktop HUD changes.
+   Touch: the band becomes a flex row placed in the horizontal gap between the
+   left and right thumb clusters, so health/ammo are always readable and never
+   sit under a thumb, a notch or a control. It wraps on narrow screens.
+   ------------------------------------------------------------------------ */
+#hud-bottom { display: contents; }
+
+body.touch-on #hud-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  position: absolute;
+  /* scaled by the same unit as the thumb clusters, so the gap never closes */
+  left: calc(152px * var(--tc-u) + var(--sal));
+  right: calc(272px * var(--tc-u) + var(--sar));
+  bottom: calc(20px + var(--sab));
+  pointer-events: none;
+}
+body.touch-on #hud-vitals,
+body.touch-on #hud-weapon {
+  position: static;
+  bottom: auto; left: auto; right: auto;
+  transform-origin: left bottom;
+}
+body.touch-on #hud-vitals { width: clamp(168px, 26vw, 224px); }
+body.touch-on #hud-weapon { text-align: right; margin-left: auto; }
+
+/* The minimap lives top-right; on touch it is sized against viewport height so
+   it can never grow down into the thumb cluster below it. */
+body.touch-on #minimap {
+  top: calc(62px + var(--sat));       /* below the MAP button */
+  right: calc(10px + var(--sar));
+  /* The minimap's size is the user's S/M/L setting, written inline by
+     tacmap.js every frame, so it cannot be overridden with width/height.
+     max-* still constrains it, capping the chosen size to the space between
+     the MAP button and the thumb cluster. */
+  max-width:  clamp(76px, 22vh, 118px);
+  max-height: clamp(76px, 22vh, 118px);
+}
+body.touch-on #hud-mapbtn { top: calc(10px + var(--sat)); right: calc(10px + var(--sar)); }
+
+/* Objective drops below the top-left PAUSE button on touch. */
+body.touch-on #hud-objective { top: calc(76px + var(--sat)); }
+
+/* Interaction prompt + hack bar: keep them out of the thumb clusters too */
+body.touch-on #interact-prompt { bottom: 40%; }
+body.touch-on #hack-progress   { bottom: 45%; }
+body.touch-on #bandage-bar     { bottom: 34%; }
+
+
+/* =========================================================
    RESPONSIVE SYSTEM (Stage D) — phones, tablets, notches,
    orientation changes, touch targets, safe areas.
    ========================================================= */
@@ -762,6 +1185,7 @@ body.daymode #hud #interact-prompt { text-shadow: 0 1px 0 rgba(255, 255, 255, 0.
   --sar: env(safe-area-inset-right, 0px);
   --touch-scale: 1;          /* settings: button size */
   --joy-scale: 1;            /* settings: joystick size */
+  --look-scale: 1;           /* settings: look-stick size */
   --joy-op: 0.55;            /* settings: joystick opacity */
   --btn-op: 0.8;             /* settings: button opacity */
   --hud-scale: 1;            /* settings: HUD scale */
@@ -868,8 +1292,8 @@ html, body {
 /* keep vitals/weapon above the thumb zones when touch controls are on */
 body.touch-on #hud-vitals { bottom: calc(120px + var(--sab)); }
 body.touch-on #hud-weapon { bottom: calc(128px + var(--sab)); }
-body.touch-on #stance-indicator { bottom: calc(190px + var(--sab)); }
-body.touch-on #veh-hud { bottom: calc(200px + var(--sab)); }
+body.touch-on #stance-indicator { bottom: calc(282px + var(--sab)); }
+body.touch-on #veh-hud { bottom: calc(282px + var(--sab)); }
 body.touch-on #interact-prompt { bottom: 40%; }
 body.touch-on #hack-progress { bottom: 45%; }
 
@@ -954,89 +1378,253 @@ body.touch-on #subtitle-line { bottom: calc(26% + var(--sab)); }
 
 /* =========================================================
    TOUCH CONTROLS (built by js/touch.js)
+
+   Visual language: layered translucent panels, hairline borders, generous
+   corner radii, restrained accent glow. Nothing is a flat opaque rectangle.
+
+   Layout: every size AND every offset is expressed in the same scaled unit
+   (--tc-u), so the whole cluster scales uniformly with the user's button-size
+   setting and with the tablet boost. Because size and spacing scale by the
+   same factor, the buttons can never collide at any scale.
+
+   Everything is anchored to the safe-area insets, so a notch, rounded corner
+   or home indicator can never cover a control.
    ========================================================= */
-#touch-controls { position: fixed; inset: 0; z-index: 24; pointer-events: none; }
+#touch-controls {
+  position: fixed; inset: 0; z-index: 24; pointer-events: none;
+  --tc-u: calc(var(--touch-scale) * var(--tc-boost, 1));  /* the one scaled unit */
+  --tc-r: 16px;
+}
 #touch-controls.hidden { display: none; }
 #touch-controls > * { pointer-events: auto; }
 
-.tjoy-zone { position: absolute; bottom: 0; width: 44%; height: 62%; touch-action: none; }
-.tjoy-zone.left { left: 0; }
-.tjoy-zone.right { right: 0; width: 56%; height: 78%; }
-.tjoy-base {
-  position: absolute; width: calc(124px * var(--joy-scale)); height: calc(124px * var(--joy-scale));
-  border: 1.5px solid rgba(207,227,216,0.35); border-radius: 50%;
-  background: rgba(10,16,14,calc(0.3 * var(--joy-op) / 0.55));
-  opacity: var(--joy-op);
-  transform: translate(-50%, -50%);
-  display: none;
-}
-.tjoy-knob {
-  position: absolute; width: calc(52px * var(--joy-scale)); height: calc(52px * var(--joy-scale));
-  border-radius: 50%;
-  background: rgba(217,164,65,0.5); border: 1.5px solid rgba(217,164,65,0.9);
-  opacity: var(--joy-op);
-  transform: translate(-50%, -50%);
-  display: none;
-}
-.tjoy-base.show, .tjoy-knob.show { display: block; }
+/* While the tactical map is up only MAP and PAUSE stay reachable, so the same
+   button that opened it can close it. */
+#touch-controls.map-open .tstick-zone,
+#touch-controls.map-open .tbtn:not(.tbtn-map):not(.tbtn-pause),
+#touch-controls.map-open #tpick-card { display: none; }
 
+/* ---------------------------------------------------------- analog sticks -- */
+.tstick-zone {
+  position: absolute; bottom: 0;
+  touch-action: none;                 /* no scroll/zoom from a stick drag */
+  -webkit-tap-highlight-color: transparent;
+}
+.tstick-zone.left  { left: 0;  width: 42%; height: 68%; }
+.tstick-zone.right { right: 0; width: 58%; height: 84%; }
+
+.tstick-base, .tstick-knob {
+  position: absolute; display: none;
+  border-radius: 50%; transform: translate(-50%, -50%);
+  pointer-events: none;               /* purely cosmetic */
+}
+.tstick-base {
+  width: calc(132px * var(--joy-scale)); height: calc(132px * var(--joy-scale));
+  border: 1px solid rgba(207, 227, 216, 0.22);
+  background: radial-gradient(circle, rgba(9,14,12,0.34) 0%, rgba(9,14,12,0.10) 72%, rgba(9,14,12,0) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), inset 0 0 22px rgba(0,0,0,0.30);
+  opacity: var(--joy-op);
+}
+.tstick-base.right { width: calc(132px * var(--look-scale)); height: calc(132px * var(--look-scale)); }
+
+.tstick-knob {
+  width: calc(56px * var(--joy-scale)); height: calc(56px * var(--joy-scale));
+  border: 1px solid rgba(255, 226, 172, 0.7);
+  background: radial-gradient(circle at 34% 28%,
+              rgba(255,236,198,0.92) 0%, rgba(217,164,65,0.62) 58%, rgba(122,84,22,0.55) 100%);
+  box-shadow: 0 3px 12px rgba(0,0,0,0.5), 0 0 14px rgba(217,164,65,0.18);
+  opacity: calc(var(--joy-op) + 0.25);
+}
+.tstick-knob.right { width: calc(56px * var(--look-scale)); height: calc(56px * var(--look-scale)); }
+.tstick-base.show, .tstick-knob.show { display: block; }
+
+/* --------------------------------------------------------------- buttons -- */
 .tbtn {
   position: absolute;
   display: flex; align-items: center; justify-content: center;
-  width: calc(58px * var(--touch-scale)); height: calc(58px * var(--touch-scale));
-  border-radius: 50%;
-  border: 1.5px solid rgba(207,227,216,0.4);
-  background: rgba(10,16,14,0.5);
+  min-width: calc(58px * var(--tc-u)); min-height: calc(58px * var(--tc-u));
+  border-radius: var(--tc-r);
+  border: 1px solid rgba(207, 227, 216, 0.20);
+  background: linear-gradient(180deg, rgba(30,38,34,0.52) 0%, rgba(8,12,11,0.58) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.055), 0 4px 14px rgba(0,0,0,0.32);
   color: var(--hud-color);
-  font-family: var(--font-mono); font-size: calc(9px * var(--touch-scale)); letter-spacing: 1px;
+  font-family: var(--font-mono);
+  font-size: calc(9.5px * var(--tc-u));
+  letter-spacing: 1.2px;
   opacity: var(--btn-op);
   touch-action: none; user-select: none; -webkit-user-select: none;
-  text-align: center; line-height: 1.1;
+  -webkit-tap-highlight-color: transparent;
+  text-align: center; line-height: 1.12;
+  transition: transform .07s ease, background .12s ease, border-color .12s ease, box-shadow .12s ease;
 }
-.tbtn.press { background: rgba(217,164,65,0.4); border-color: var(--accent); color: #fff; }
+.tbtn.press {
+  transform: scale(0.93);
+  background: linear-gradient(180deg, rgba(217,164,65,0.40) 0%, rgba(120,82,22,0.34) 100%);
+  border-color: var(--accent);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 0 16px rgba(217,164,65,0.28);
+  color: #fff;
+}
 .tbtn.hidden { display: none; }
+body.reduce-motion .tbtn { transition: none; }
+
+/* ---- Primary: FIRE — largest, circular, warm accent, thumb-reachable ---- */
 .tbtn-fire {
-  width: calc(92px * var(--touch-scale)); height: calc(92px * var(--touch-scale));
-  right: calc(18px + var(--sar)); bottom: calc(96px + var(--sab));
-  border-color: rgba(224,112,90,0.65); color: #ffd9cf; font-size: calc(12px * var(--touch-scale));
+  width:  calc(96px * var(--tc-u)); height: calc(96px * var(--tc-u));
+  min-width: 0; border-radius: 50%;
+  right: calc(20px * var(--tc-u) + var(--sar));
+  bottom: calc(96px * var(--tc-u) + var(--sab));
+  border: 1.5px solid rgba(224,112,90,0.55);
+  background: linear-gradient(180deg, rgba(72,32,26,0.55) 0%, rgba(16,10,9,0.62) 100%);
+  color: #ffd9cf; font-size: calc(12px * var(--tc-u)); letter-spacing: 2px;
 }
-.tbtn-aim {
-  width: calc(66px * var(--touch-scale)); height: calc(66px * var(--touch-scale));
-  right: calc(122px + var(--sar)); bottom: calc(58px + var(--sab));
+.tbtn-fire.press {
+  background: linear-gradient(180deg, rgba(224,112,90,0.55) 0%, rgba(96,36,26,0.45) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 0 20px rgba(224,112,90,0.35);
 }
-.tbtn-aim.on { background: rgba(120,180,255,0.35); border-color: #9fd0ff; }
-.tbtn-reload { right: calc(30px + var(--sar)); bottom: calc(212px + var(--sab)); }
-.tbtn-jump { right: calc(126px + var(--sar)); bottom: calc(160px + var(--sab)); }
-.tbtn-crouch { right: calc(204px + var(--sar)); bottom: calc(96px + var(--sab)); }
-.tbtn-sprint { left: calc(16px + var(--sal)); bottom: calc(212px + var(--sab)); }
-.tbtn-sprint.on { background: rgba(160,220,170,0.3); border-color: #9fd66a; }
+
+/* ---- Primary: ADS — circular, cool accent ---- */
+.tbtn-ads {
+  width: calc(70px * var(--tc-u)); height: calc(70px * var(--tc-u));
+  min-width: 0; border-radius: 50%;
+  right: calc(124px * var(--tc-u) + var(--sar));
+  bottom: calc(52px * var(--tc-u) + var(--sab));
+  font-size: calc(11px * var(--tc-u)); letter-spacing: 1.6px;
+}
+.tbtn-ads.on {
+  background: linear-gradient(180deg, rgba(120,180,255,0.34) 0%, rgba(12,24,40,0.55) 100%);
+  border-color: rgba(159,208,255,0.75); color: #e6f3ff;
+}
+
+/* ---- Secondary cluster — right thumb ---- */
+.tbtn-jump {
+  right: calc(128px * var(--tc-u) + var(--sar));
+  bottom: calc(140px * var(--tc-u) + var(--sab));
+}
+.tbtn-switch {
+  right: calc(128px * var(--tc-u) + var(--sar));
+  bottom: calc(212px * var(--tc-u) + var(--sab));
+}
+.tbtn-crouch {
+  right: calc(202px * var(--tc-u) + var(--sar));
+  bottom: calc(52px * var(--tc-u) + var(--sab));
+}
+.tbtn-crouch.on, .tbtn-sprint.on {
+  background: linear-gradient(180deg, rgba(160,220,170,0.30) 0%, rgba(10,20,14,0.55) 100%);
+  border-color: rgba(159,214,106,0.7);
+}
+.tbtn-reload {
+  right: calc(39px * var(--tc-u) + var(--sar));
+  bottom: calc(208px * var(--tc-u) + var(--sab));
+}
+.tbtn-cam {
+  right: calc(206px * var(--tc-u) + var(--sar));
+  bottom: calc(128px * var(--tc-u) + var(--sab));
+  min-width: calc(50px * var(--tc-u)); min-height: calc(50px * var(--tc-u));
+  font-size: calc(9px * var(--tc-u));
+}
+
+/* ---- Secondary cluster — left thumb ---- */
+.tbtn-sprint {
+  left: calc(20px * var(--tc-u) + var(--sal));
+  bottom: calc(150px * var(--tc-u) + var(--sab));
+}
+.tbtn-gear {
+  left: calc(20px * var(--tc-u) + var(--sal));
+  bottom: calc(222px * var(--tc-u) + var(--sab));
+}
+.tbtn-map {
+  left: calc(92px * var(--tc-u) + var(--sal));
+  bottom: calc(222px * var(--tc-u) + var(--sab));
+  min-width: calc(52px * var(--tc-u)); min-height: calc(52px * var(--tc-u));
+}
+
+/* ---- Utility — top-left, always clear of the notch ---- */
+.tbtn-pause {
+  left: calc(12px * var(--tc-u) + var(--sal));
+  top:   calc(10px * var(--tc-u) + var(--sat));
+  min-width: calc(46px * var(--tc-u)); min-height: calc(46px * var(--tc-u));
+  border-radius: 12px;
+  font-size: calc(12px * var(--tc-u));
+}
+
+/* ---- Contextual INTERACT — pill, centred, only when a prompt is live ---- */
 .tbtn-interact {
   left: 50%; bottom: calc(30% + var(--sab)); transform: translateX(-50%);
-  width: auto; min-width: calc(150px * var(--touch-scale)); height: calc(52px * var(--touch-scale));
-  border-radius: 26px; padding: 0 18px;
-  border-color: var(--accent); color: var(--accent); font-size: calc(11px * var(--touch-scale));
+  width: auto; min-width: calc(158px * var(--tc-u));
+  min-height: calc(52px * var(--tc-u));
+  border-radius: 26px; padding: 0 20px;
+  border-color: var(--accent); color: var(--accent);
+  background: linear-gradient(180deg, rgba(60,46,18,0.58) 0%, rgba(12,10,7,0.62) 100%);
+  font-size: calc(11px * var(--tc-u)); letter-spacing: 1.6px;
 }
-.tbtn-wheel { left: calc(16px + var(--sal)); bottom: calc(280px + var(--sab)); }
-.tbtn-map { left: calc(88px + var(--sal)); bottom: calc(252px + var(--sab)); width: calc(48px * var(--touch-scale)); height: calc(48px * var(--touch-scale)); }
-.tbtn-pause {
-  left: calc(10px + var(--sal)); top: calc(10px + var(--sat));
-  width: calc(44px * var(--touch-scale)); height: calc(44px * var(--touch-scale));
-}
-.tbtn-cam { right: calc(204px + var(--sar)); bottom: calc(196px + var(--sab)); width: calc(46px * var(--touch-scale)); height: calc(46px * var(--touch-scale)); }
-.tbtn-use { right: calc(30px + var(--sar)); bottom: calc(284px + var(--sab)); width: calc(46px * var(--touch-scale)); height: calc(46px * var(--touch-scale)); }
 
-/* weapon pickup card (touch) */
+/* ------------------------------------------------- weapon pickup card ----- */
 #tpick-card {
   position: absolute; left: 50%; bottom: calc(38% + var(--sab)); transform: translateX(-50%);
   width: min(340px, calc(100vw - 32px));
-  background: rgba(8,12,10,0.88); border: 1px solid rgba(217,164,65,0.5);
-  padding: 10px 14px; font-family: var(--font-mono);
+  border-radius: 14px;
+  border: 1px solid rgba(217,164,65,0.45);
+  background: linear-gradient(180deg, rgba(20,17,10,0.88) 0%, rgba(8,12,10,0.90) 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 30px rgba(0,0,0,0.5);
+  padding: 12px 16px; font-family: var(--font-mono);
 }
 #tpick-card.hidden { display: none; }
 .tpick-head { font-size: 9px; letter-spacing: 3px; color: var(--accent); margin-bottom: 4px; }
 .tpick-name { font-size: 15px; letter-spacing: 2px; color: #e8f2ec; }
 .tpick-meta { font-size: 10px; color: var(--hud-dim); margin-top: 3px; letter-spacing: 1px; line-height: 1.5; }
 .tpick-btn { margin-top: 8px; width: 100%; min-height: 44px; }
+
+/* --------------------------------------------------------- breakpoints --- */
+
+/* Very short landscape (small phones): tighten the vertical stack.
+   The default stack needs ~280px of height; this trims it to ~215px. */
+@media (max-height: 460px) {
+  /* Short landscape: fold the stack sideways rather than upward. The default
+     stack is ~280px tall, which would eat 75% of a 375px-tall phone and leave
+     no room for the HUD. Here SWITCH sits beside JUMP and the cluster tops
+     out at ~224px. */
+  #touch-controls { --tc-r: 13px; }
+  .tbtn-fire   { bottom: calc(38px  * var(--tc-u) + var(--sab)); }
+  .tbtn-ads    { bottom: calc(30px  * var(--tc-u) + var(--sab)); }
+  .tbtn-crouch { bottom: calc(30px  * var(--tc-u) + var(--sab)); }
+  .tbtn-jump   { bottom: calc(104px * var(--tc-u) + var(--sab)); }
+  .tbtn-switch {
+    bottom: calc(104px * var(--tc-u) + var(--sab));
+    right:  calc(202px * var(--tc-u) + var(--sar));
+  }
+  .tbtn-cam {
+    bottom: calc(170px * var(--tc-u) + var(--sab));
+    right:  calc(124px * var(--tc-u) + var(--sar));
+  }
+  .tbtn-reload { bottom: calc(166px * var(--tc-u) + var(--sab)); }
+  .tbtn-sprint { bottom: calc(104px * var(--tc-u) + var(--sab)); }
+  .tbtn-gear   { bottom: calc(166px * var(--tc-u) + var(--sab)); }
+  .tbtn-map    { bottom: calc(166px * var(--tc-u) + var(--sab)); }
+  /* use the freed space: the HUD band can sit lower and stay compact */
+  body.touch-on #hud-bottom { bottom: calc(14px + var(--sab)); }
+}
+
+/* Portrait (tablets — phones are covered by the rotate prompt): the thumb
+   clusters sit a little lower and the sticks get more room. */
+#touch-controls.portrait .tbtn-fire   { bottom: calc(120px * var(--tc-u) + var(--sab)); }
+#touch-controls.portrait .tbtn-ads    { bottom: calc(62px  * var(--tc-u) + var(--sab)); }
+#touch-controls.portrait .tbtn-jump   { bottom: calc(164px * var(--tc-u) + var(--sab)); }
+#touch-controls.portrait .tbtn-switch { bottom: calc(232px * var(--tc-u) + var(--sab)); }
+#touch-controls.portrait .tbtn-reload { bottom: calc(232px * var(--tc-u) + var(--sab)); }
+#touch-controls.portrait .tbtn-crouch { bottom: calc(62px  * var(--tc-u) + var(--sab)); }
+#touch-controls.portrait .tbtn-sprint { bottom: calc(130px * var(--tc-u) + var(--sab)); }
+#touch-controls.portrait .tstick-zone.left  { width: 46%; height: 58%; }
+#touch-controls.portrait .tstick-zone.right { width: 54%; height: 70%; }
+
+/* Tablets: bigger hands, bigger targets — multiplies the user's own setting. */
+@media (min-width: 900px) and (min-height: 600px) {
+  /* --tc-boost is set at :root so --tc-u — and therefore the HUD band's
+     clearance from the thumb clusters — picks it up too. */
+  :root { --tc-boost: 1.16; }   /* multiplies the user's own button-size setting */
+  #touch-controls { --tc-r: 18px; }
+  .tstick-zone.left  { width: 38%; }
+  .tstick-zone.right { width: 46%; }
+}
 
 /* --- mobile bottom navigation --- */
 #mobnav {
@@ -1075,7 +1663,7 @@ body.touch-device .screen { padding-bottom: calc(70px + var(--sab)); }
 .cat-chip.on { border-color: var(--accent); color: var(--accent); background: rgba(217,164,65,0.12); }
 
 /* HUD scale (settings) — zoom keeps canvas offsetX mapping consistent */
-#hud { zoom: var(--hud-scale, 1); }
+/* HUD scale is applied per module (see HUD SYSTEM) so nothing drifts off-screen */
 
 /* --- accessibility modes --- */
 body.contrast-high { --hud-dim: rgba(224, 240, 230, 0.92); --hud-faint: rgba(207, 227, 216, 0.6); }

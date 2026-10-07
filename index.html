@@ -265,6 +265,11 @@
       <span class="setting-val" id="val-joy-size">1.00</span>
     </div>
     <div class="setting-row">
+      <label for="set-look-stick-size">LOOK STICK SIZE</label>
+      <input type="range" id="set-look-stick-size" min="0.7" max="1.5" step="0.05" value="1">
+      <span class="setting-val" id="val-look-stick-size">1.00</span>
+    </div>
+    <div class="setting-row">
       <label for="set-joy-opacity">JOYSTICK OPACITY</label>
       <input type="range" id="set-joy-opacity" min="0.2" max="1" step="0.05" value="0.55">
       <span class="setting-val" id="val-joy-opacity">0.55</span>
@@ -534,34 +539,38 @@
   <div id="hitmarker" class="hidden">✕</div>
   <div id="damage-indicators"></div>
 
-  <!-- Bottom left: health / stamina -->
-  <div id="hud-vitals">
-    <div class="vital-row">
-      <span class="vital-label">ARMOR</span>
-      <div class="bar-outer armor-outer"><div id="armor-fill" class="bar-inner armor-inner"></div></div>
+  <!-- Bottom HUD band: vitals + weapon/ammo.
+       Grouped so touch layouts can place both clear of the thumb clusters. -->
+  <div id="hud-bottom">
+    <!-- Bottom left: health / stamina -->
+    <div id="hud-vitals">
+      <div class="vital-row">
+        <span class="vital-label">ARMOR</span>
+        <div class="bar-outer armor-outer"><div id="armor-fill" class="bar-inner armor-inner"></div></div>
+      </div>
+      <div class="vital-row">
+        <span class="vital-label">HEALTH</span>
+        <div class="bar-outer health-outer"><div id="health-fill" class="bar-inner health-inner"></div></div>
+        <span class="vital-num" id="health-num">100</span>
+      </div>
+      <div class="vital-row">
+        <span class="vital-label">STAMINA</span>
+        <div class="bar-outer stamina-outer"><div id="stamina-fill" class="bar-inner stamina-inner"></div></div>
+      </div>
     </div>
-    <div class="vital-row">
-      <span class="vital-label">HEALTH</span>
-      <div class="bar-outer health-outer"><div id="health-fill" class="bar-inner health-inner"></div></div>
-      <span class="vital-num" id="health-num">100</span>
-    </div>
-    <div class="vital-row">
-      <span class="vital-label">STAMINA</span>
-      <div class="bar-outer stamina-outer"><div id="stamina-fill" class="bar-inner stamina-inner"></div></div>
-    </div>
-  </div>
 
-  <!-- Bottom right: weapon / ammo -->
-  <div id="hud-weapon">
-    <div id="weapon-name">VX-4</div>
-    <div id="ammo-row">
-      <span id="ammo-mag">30</span><span class="ammo-sep">/</span><span id="ammo-reserve">180</span><span id="ammo-total">Σ 210</span>
+    <!-- Bottom right: weapon / ammo -->
+    <div id="hud-weapon">
+      <div id="weapon-name">VX-4</div>
+      <div id="ammo-row">
+        <span id="ammo-mag">30</span><span class="ammo-sep">/</span><span id="ammo-reserve">180</span><span id="ammo-total">Σ 210</span>
+      </div>
+      <div id="weapon-state"></div>
+      <div id="frag-count">FRAG ×2</div>
+      <div id="throw-row" class="hidden"><span id="throw-name">FRAG</span> ×<span id="throw-count">0</span></div>
     </div>
-    <div id="weapon-state"></div>
-    <div id="frag-count">FRAG ×2</div>
-    <div id="throw-row" class="hidden"><span id="throw-name">FRAG</span> ×<span id="throw-count">0</span></div>
-  </div>
 
+  </div>
   <!-- Vehicle HUD (visible while driving) -->
   <div id="veh-hud" class="hidden">
     <div id="veh-name">—</div>

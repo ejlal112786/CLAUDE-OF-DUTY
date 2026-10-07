@@ -879,6 +879,11 @@ export class WeaponSystem {
     this.kickZ += rec.kickZ;
     this.kickPitch += rec.kickPitch;
 
+    // the operator's body absorbs the shot too, not just the view model
+    if (this.game.body && this.game.body.built) {
+      this.game.body.addRecoil(THREE.MathUtils.clamp(rec.kickPitch / 0.22, 0.15, 1));
+    }
+
     // audio + visuals
     this.game.addShake(def.shake != null ? def.shake : 0.045);
     this.game.audio.gunshot(def.sound, null);
@@ -1163,11 +1168,14 @@ export class WeaponSystem {
     this._targetRot.x += this.landDip * 0.16;
 
     // look sway (weapon trails camera rotation)
+    // A braced stance visibly settles the weapon, not just the crosshair.
+    const stab = player.stabilityMultiplier ? player.stabilityMultiplier() : 1;
     const swayK = 26, swayD = 9;
-    this.swayVX += (-player.lookDeltaX * 0.02 * swayK - this.swayX * swayK - this.swayVX * swayD) * dt;
-    this.swayVY += (-player.lookDeltaY * 0.02 * swayK - this.swayY * swayK - this.swayVY * swayD) * dt;
-    this.swayX = THREE.MathUtils.clamp(this.swayX + this.swayVX * dt, -0.06, 0.06);
-    this.swayY = THREE.MathUtils.clamp(this.swayY + this.swayVY * dt, -0.06, 0.06);
+    this.swayVX += (-player.lookDeltaX * 0.02 * swayK * stab - this.swayX * swayK - this.swayVX * swayD) * dt;
+    this.swayVY += (-player.lookDeltaY * 0.02 * swayK * stab - this.swayY * swayK - this.swayVY * swayD) * dt;
+    const swayCap = 0.06 * Math.max(0.35, stab);
+    this.swayX = THREE.MathUtils.clamp(this.swayX + this.swayVX * dt, -swayCap, swayCap);
+    this.swayY = THREE.MathUtils.clamp(this.swayY + this.swayVY * dt, -swayCap, swayCap);
     this._targetPos.x += this.swayX * (1 - this.adsT * 0.9);
     this._targetPos.y += this.swayY * (1 - this.adsT * 0.9);
     this._targetRot.y += -this.swayX * 2.2;

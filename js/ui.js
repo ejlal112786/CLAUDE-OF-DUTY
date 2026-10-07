@@ -883,6 +883,28 @@ export class UI {
     this.pinnedEl.classList.toggle('show', !!on);
   }
 
+  // -------------------------------------------------------------------------
+  // Cache-guarded DOM writes.
+  // updateHUD runs every frame; touching the DOM unconditionally is one of the
+  // few things that can cost more than the render itself on a phone. Each of
+  // these skips the write when the value has not changed.
+  // -------------------------------------------------------------------------
+  _text(key, el, value) {
+    if (!el || this._c[key] === value) return;
+    this._c[key] = value;
+    el.textContent = value;
+  }
+  _style(key, el, prop, value) {
+    if (!el || this._c[key] === value) return;
+    this._c[key] = value;
+    el.style[prop] = value;
+  }
+  _flag(key, el, cls, on) {
+    if (!el || this._c[key] === on) return;
+    this._c[key] = on;
+    el.classList.toggle(cls, on);
+  }
+
   updateHUD(dt) {
     const g = this.game;
     const p = g.player;
@@ -920,9 +942,10 @@ export class UI {
       this._radioT -= dt;
       if (this._radioT <= 0) this.radioEl.classList.remove('show');
     }
-    if (this.fragEl) this.fragEl.textContent = 'FRAG ×' + (p.frags || 0);
+    this._text('frags', this.fragEl, 'FRAG ×' + (p.frags || 0));
     if (this.armorFill) {
-      this.armorFill.style.width = Math.max(0, Math.min(100, p.armor || 0)) + '%';
+      this._style('armor', this.armorFill, 'width',
+                  Math.max(0, Math.min(100, Math.round(p.armor || 0))) + '%');
       if (this._armorFlashT > 0) {
         this._armorFlashT -= dt;
         if (this._armorFlashT <= 0) this.armorFill.classList.remove('flash');
@@ -967,21 +990,22 @@ export class UI {
     // compass
     const bearing = ((-p.yaw * 180 / Math.PI) % 360 + 360) % 360;
     const x = -(bearing - COMPASS_WINDOW / 2 / COMPASS_PX_PER_DEG) * COMPASS_PX_PER_DEG;
-    this.compassStrip.style.transform = `translateX(${x.toFixed(1)}px)`;
+    this._style('compassX', this.compassStrip, 'transform', `translateX(${x.toFixed(1)}px)`);
 
     // ammo / weapon
     const st = ws.st, def = ws.def;
     if (this._c.mag !== st.mag) { this.ammoMag.textContent = String(st.mag); this._c.mag = st.mag; }
     if (this._c.res !== st.reserve) { this.ammoReserve.textContent = String(st.reserve); this._c.res = st.reserve; }
-    this.ammoMag.classList.toggle('low', st.mag <= def.magSize * 0.25);
+    this._flag('ammoLow', this.ammoMag, 'low', st.mag <= def.magSize * 0.25);
     // §13: auto-suggest reload when the magazine runs dry — one-shot toast +
     // pulsing RELOAD button on touch (never blocking)
     const rldBtn = this._rldBtn || (this._rldBtn = document.getElementById('tbtn-reload'));
-    if (st.mag === 0 && st.reserve > 0 && g.handsMode === 'gun') {
-      if (rldBtn) rldBtn.classList.add('suggest');
+    const suggest = st.mag === 0 && st.reserve > 0 && g.handsMode === 'gun';
+    if (suggest) {
+      this._flag('rldSuggest', rldBtn, 'suggest', true);
       if (!this._dryWarned) { this._dryWarned = true; this.toastBrief('MAGAZINE EMPTY — RELOAD'); }
     } else {
-      if (rldBtn) rldBtn.classList.remove('suggest');
+      this._flag('rldSuggest', rldBtn, 'suggest', false);
       if (st.mag > 0) this._dryWarned = false;
     }
     // total rounds + reload state (C3)
@@ -997,10 +1021,10 @@ export class UI {
       const tName = THROWABLE_DEFS[tid] ? THROWABLE_DEFS[tid].name : '—';
       let txt = tName + ' ×' + th.count(tid);
       if (th.utility && THROWABLE_DEFS[th.utility]) txt += '   ·   ' + THROWABLE_DEFS[th.utility].name + ' ×' + th.count(th.utility);
-      if (this._c.throwTxt !== txt) { this.throwRow.textContent = txt; this._c.throwTxt = txt; }
-      this.throwRow.classList.remove('hidden');
-      this.throwRow.classList.toggle('hl-throw', g.handsMode === 'throwable');
-      this.throwRow.classList.toggle('hl-util', g.handsMode === 'utility');
+      this._text('throwTxt', this.throwRow, txt);
+      this._flag('throwHidden', this.throwRow, 'hidden', false);
+      this._flag('hlThrow', this.throwRow, 'hl-throw', g.handsMode === 'throwable');
+      this._flag('hlUtil', this.throwRow, 'hl-util', g.handsMode === 'utility');
     }
     // flashbang whiteout decay
     if (this._fb > 0) {
@@ -1025,17 +1049,14 @@ export class UI {
       this.healthNum.textContent = String(hp);
       this._c.hp = hp;
     }
-    this.healthFill.classList.toggle('critical', hp < 30);
+    this._flag('hpCrit', this.healthFill, 'critical', hp < 30);
     const sp = Math.floor(p.stamina);
-    if (this._c.sp !== sp) {
-      this.staminaFill.style.width = `${sp}%`;
-      this._c.sp = sp;
-    }
-    this.staminaFill.classList.toggle('exhausted', p.exhausted);
+    this._style('sp', this.staminaFill, 'width', `${sp}%`);
+    this._flag('spEx', this.staminaFill, 'exhausted', !!p.exhausted);
 
     // low-health vignette
     const low = p.health < 45 ? (1 - p.health / 45) * 0.55 : 0;
-    this.vignette.style.opacity = String(0.7 + low);
+    this._style('vig', this.vignette, 'opacity', (0.7 + low).toFixed(2));
 
     // crosshair: gap from live weapon dispersion, hidden when aiming down sights
     const ads = ws.adsT > 0.55;
@@ -1072,7 +1093,7 @@ export class UI {
       this.fps.textContent = `${fps} FPS`;
       this._fpsT = 0; this._fpsFrames = 0;
     }
-    this.fps.classList.toggle('hidden', !g.settings.perfMode);
+    this._flag('fpsHidden', this.fps, 'hidden', !g.settings.perfMode);
   }
 
   // -------------------------------------------------------------------------
@@ -1162,6 +1183,7 @@ export class UI {
     rng('set-look-sens', 'val-look-sens', 'lookSens', 1);
     rng('set-aim-sens', 'val-aim-sens', 'aimSens', 0.8);
     rng('set-joy-size', 'val-joy-size', 'joySize', 1);
+    rng('set-look-stick-size', 'val-look-stick-size', 'lookStickSize', 1);
     rng('set-joy-opacity', 'val-joy-opacity', 'joyOpacity', 0.55);
     rng('set-btn-size', 'val-btn-size', 'btnSize', 1);
     rng('set-btn-opacity', 'val-btn-opacity', 'btnOpacity', 0.8);
